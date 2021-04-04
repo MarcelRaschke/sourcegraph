@@ -314,7 +314,7 @@
     "sanitize-html": "^1.26.0",
     "semver": "^7.3.2",
     "shepherd.js": "^8.0.2",
-    "sourcegraph": "link:client/packages/sourcegraph-extension-api",
+    "sourcegraph": "24.8.0",
     "string-score": "^1.0.1",
     "tagged-template-noop": "^2.1.1",
     "textarea-caret": "^3.1.0",
