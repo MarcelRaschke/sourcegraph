@@ -5,8 +5,12 @@ import { scanSearchQuery } from './scanner'
 import { Filter, Token } from './token'
 import { filterExists, findFilters } from './validate'
 
-export function appendContextFilter(query: string, searchContextSpec: string | undefined): string {
-    return !filterExists(query, FilterType.context) && searchContextSpec
+export function appendContextFilter(
+    query: string,
+    searchContextSpec: string | undefined,
+    versionContext: string | undefined
+): string {
+    return !filterExists(query, FilterType.context) && searchContextSpec && !versionContext
         ? `context:${searchContextSpec} ${query}`
         : query
 }
@@ -51,4 +55,13 @@ export const updateFilters = (query: string, field: string, value: string): stri
         return query.trim()
     }
     return `${query} ${field}:${value}`
+}
+
+/**
+ * Appends the provided filter.
+ */
+export const appendFilter = (query: string, field: string, value: string): string => {
+    const trimmedQuery = query.trim()
+    const filter = `${field}:${value}`
+    return trimmedQuery.length === 0 ? filter : `${query.trimEnd()} ${filter}`
 }

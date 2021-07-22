@@ -6,6 +6,52 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+func TestExtractToken(t *testing.T) {
+	for _, tc := range []struct {
+		config string
+		kind   string
+		want   string
+	}{
+		{
+			config: `{"token": "deadbeef"}`,
+			kind:   KindGitLab,
+			want:   "deadbeef",
+		},
+		{
+			config: `{"token": "deadbeef"}`,
+			kind:   KindGitHub,
+			want:   "deadbeef",
+		},
+		{
+			config: `{"token": "deadbeef"}`,
+			kind:   KindBitbucketServer,
+			want:   "deadbeef",
+		},
+		{
+			config: `{"token": "deadbeef"}`,
+			kind:   KindPhabricator,
+			want:   "deadbeef",
+		},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			have, err := ExtractToken(tc.config, tc.kind)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if have != tc.want {
+				t.Errorf("Want %q, have %q", tc.want, have)
+			}
+		})
+	}
+
+	t.Run("fails for unsupported kind", func(t *testing.T) {
+		_, err := ExtractToken(`{}`, KindGitolite)
+		if err == nil {
+			t.Fatal("expected an error for unsupported kind")
+		}
+	})
+}
+
 func TestExtractRateLimitConfig(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -207,6 +253,90 @@ func TestDecodeURN(t *testing.T) {
 			}
 			if id != test.wantID {
 				t.Errorf("got id %d, want %d", id, test.wantID)
+			}
+		})
+	}
+}
+
+func TestUniqueCodeHostIdentifier(t *testing.T) {
+	for _, tc := range []struct {
+		config string
+		kind   string
+		want   string
+	}{
+		{
+			kind:   KindGitLab,
+			config: `{"url": "https://example.com"}`,
+			want:   "https://example.com/",
+		},
+		{
+			kind:   KindGitHub,
+			config: `{"url": "https://github.com"}`,
+			want:   "https://github.com/",
+		},
+		{
+			kind:   KindGitHub,
+			config: `{"url": "https://github.example.com/"}`,
+			want:   "https://github.example.com/",
+		},
+		{
+			kind: KindAWSCodeCommit,
+			config: `{
+				"region": "eu-west-1",
+				"accessKeyID": "accesskey",
+				"secretAccessKey": "secretaccesskey",
+				"gitCredentials": {
+					"username": "my-user",
+					"password": "my-password"
+				}
+			}`,
+			want: "eu-west-1:accesskey",
+		},
+		{
+			kind:   KindBitbucketServer,
+			config: `{"url": "https://bitbucket.sgdev.org/"}`,
+			want:   "https://bitbucket.sgdev.org/",
+		},
+
+		{
+			kind:   KindBitbucketCloud,
+			config: `{"url": "https://bitbucket.org/"}`,
+			want:   "https://bitbucket.org/",
+		},
+
+		{
+			kind:   KindGitolite,
+			config: `{"host": "ssh://git@gitolite.example.com:2222/"}`,
+			want:   "ssh://git@gitolite.example.com:2222/",
+		},
+		{
+			kind:   KindGitolite,
+			config: `{"host": "git@gitolite.example.com"}`,
+			want:   "git@gitolite.example.com/",
+		},
+		{
+			kind:   KindPerforce,
+			config: `{"p4.port": "ssl:111.222.333.444:1666"}`,
+			want:   "ssl:111.222.333.444:1666",
+		},
+		{
+			kind:   KindPhabricator,
+			config: `{"url": "https://phabricator.sgdev.org/"}`,
+			want:   "https://phabricator.sgdev.org/",
+		},
+		{
+			kind:   KindOther,
+			config: `{"url": "ssh://user@host.xz:2333/"}`,
+			want:   "ssh://user@host.xz:2333/",
+		},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			have, err := UniqueCodeHostIdentifier(tc.kind, tc.config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diff := cmp.Diff(tc.want, have); diff != "" {
+				t.Fatal(diff)
 			}
 		})
 	}

@@ -2,8 +2,8 @@ package graphqlbackend
 
 import (
 	"context"
-	"errors"
 
+	"github.com/cockroachdb/errors"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/graph-gophers/graphql-go/relay"
 )
@@ -241,5 +241,15 @@ func (r *NodeResolver) ToLSIFIndex() (LSIFIndexResolver, bool) {
 
 func (r *NodeResolver) ToOutOfBandMigration() (*outOfBandMigrationResolver, bool) {
 	n, ok := r.Node.(*outOfBandMigrationResolver)
+	return n, ok
+}
+
+func (r *NodeResolver) ToBulkOperation() (BulkOperationResolver, bool) {
+	n, ok := r.Node.(BulkOperationResolver)
+	return n, ok
+}
+
+func (r *NodeResolver) ToBatchSpecExecution() (BatchSpecExecutionResolver, bool) {
+	n, ok := r.Node.(BatchSpecExecutionResolver)
 	return n, ok
 }

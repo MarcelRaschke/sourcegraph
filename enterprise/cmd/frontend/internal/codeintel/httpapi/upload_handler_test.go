@@ -6,7 +6,6 @@ import (
 	"context"
 	"flag"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -41,6 +40,7 @@ func TestHandleEnqueueSinglePayload(t *testing.T) {
 	mockUploadStore := uploadstoremocks.NewMockStore()
 
 	mockDBStore.TransactFunc.SetDefaultReturn(mockDBStore, nil)
+	mockDBStore.DoneFunc.SetDefaultHook(func(err error) error { return err })
 	mockDBStore.InsertUploadFunc.SetDefaultReturn(42, nil)
 
 	testURL, err := url.Parse("http://test.com/upload")
@@ -104,7 +104,7 @@ func TestHandleEnqueueSinglePayload(t *testing.T) {
 			t.Errorf("unexpected bundle id. want=%s have=%s", "upload-42.lsif.gz", call.Arg1)
 		}
 
-		contents, err := ioutil.ReadAll(call.Arg2)
+		contents, err := io.ReadAll(call.Arg2)
 		if err != nil {
 			t.Fatalf("unexpected error reading payload: %s", err)
 		}
@@ -122,6 +122,7 @@ func TestHandleEnqueueSinglePayloadNoIndexerName(t *testing.T) {
 	mockUploadStore := uploadstoremocks.NewMockStore()
 
 	mockDBStore.TransactFunc.SetDefaultReturn(mockDBStore, nil)
+	mockDBStore.DoneFunc.SetDefaultHook(func(err error) error { return err })
 	mockDBStore.InsertUploadFunc.SetDefaultReturn(42, nil)
 
 	testURL, err := url.Parse("http://test.com/upload")
@@ -170,7 +171,7 @@ func TestHandleEnqueueSinglePayloadNoIndexerName(t *testing.T) {
 			t.Errorf("unexpected bundle id. want=%s have=%s", "upload-42.lsif.gz", call.Arg1)
 		}
 
-		contents, err := ioutil.ReadAll(call.Arg2)
+		contents, err := io.ReadAll(call.Arg2)
 		if err != nil {
 			t.Fatalf("unexpected error reading payload: %s", err)
 		}
@@ -188,6 +189,7 @@ func TestHandleEnqueueMultipartSetup(t *testing.T) {
 	mockUploadStore := uploadstoremocks.NewMockStore()
 
 	mockDBStore.TransactFunc.SetDefaultReturn(mockDBStore, nil)
+	mockDBStore.DoneFunc.SetDefaultHook(func(err error) error { return err })
 	mockDBStore.InsertUploadFunc.SetDefaultReturn(42, nil)
 
 	testURL, err := url.Parse("http://test.com/upload")
@@ -252,6 +254,7 @@ func TestHandleEnqueueMultipartUpload(t *testing.T) {
 	}
 
 	mockDBStore.TransactFunc.SetDefaultReturn(mockDBStore, nil)
+	mockDBStore.DoneFunc.SetDefaultHook(func(err error) error { return err })
 	mockDBStore.GetUploadByIDFunc.SetDefaultReturn(upload, true, nil)
 
 	testURL, err := url.Parse("http://test.com/upload")
@@ -304,7 +307,7 @@ func TestHandleEnqueueMultipartUpload(t *testing.T) {
 			t.Errorf("unexpected bundle id. want=%s have=%s", "upload-42.3.lsif.gz", call.Arg1)
 		}
 
-		contents, err := ioutil.ReadAll(call.Arg2)
+		contents, err := io.ReadAll(call.Arg2)
 		if err != nil {
 			t.Fatalf("unexpected error reading payload: %s", err)
 		}
@@ -325,6 +328,7 @@ func TestHandleEnqueueMultipartFinalize(t *testing.T) {
 		UploadedParts: []int{0, 1, 2, 3, 4},
 	}
 	mockDBStore.TransactFunc.SetDefaultReturn(mockDBStore, nil)
+	mockDBStore.DoneFunc.SetDefaultHook(func(err error) error { return err })
 	mockDBStore.GetUploadByIDFunc.SetDefaultReturn(upload, true, nil)
 
 	testURL, err := url.Parse("http://test.com/upload")

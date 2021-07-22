@@ -2,8 +2,8 @@ package graphqlbackend
 
 import (
 	"context"
-	"errors"
 
+	"github.com/cockroachdb/errors"
 	"github.com/graph-gophers/graphql-go"
 
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/backend"
@@ -16,7 +16,7 @@ func (r *schemaResolver) SetTag(ctx context.Context, args *struct {
 	Present bool
 }) (*EmptyResponse, error) {
 	// 🚨 SECURITY: Only site admins may set tags.
-	if err := backend.CheckCurrentUserIsSiteAdmin(ctx); err != nil {
+	if err := backend.CheckCurrentUserIsSiteAdmin(ctx, r.db); err != nil {
 		return nil, err
 	}
 
@@ -29,7 +29,7 @@ func (r *schemaResolver) SetTag(ctx context.Context, args *struct {
 		return nil, errors.New("setting tags is only supported for users")
 	}
 
-	if err := database.GlobalUsers.SetTag(ctx, user.user.ID, args.Tag, args.Present); err != nil {
+	if err := database.Users(r.db).SetTag(ctx, user.user.ID, args.Tag, args.Present); err != nil {
 		return nil, err
 	}
 	return &EmptyResponse{}, nil

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc"
@@ -75,7 +76,7 @@ func MakeAWSCodeCommitRepo(services ...*ExternalService) *Repo {
 // MakeOtherRepo returns a configured repository from a custom host.
 func MakeOtherRepo(services ...*ExternalService) *Repo {
 	repo := MakeRepo("git-host.com/org/foo", "https://git-host.com/", extsvc.KindOther, services...)
-	repo.Metadata = new(OtherRepoMetadata)
+	repo.Metadata = new(extsvc.OtherRepoMetadata)
 	return repo
 }
 
@@ -271,7 +272,7 @@ var Opt = struct {
 		return func(r *Repo) {
 			r.Sources = map[string]*SourceInfo{}
 			for _, src := range srcs {
-				r.Sources[src] = &SourceInfo{ID: src}
+				r.Sources[src] = &SourceInfo{ID: src, CloneURL: "clone-url"}
 			}
 		}
 	},
@@ -311,7 +312,7 @@ var Assert = struct {
 			t.Helper()
 			// Exclude auto-generated IDs from equality tests
 			have = append(Repos{}, have...).With(Opt.RepoID(0))
-			if diff := cmp.Diff(want, have); diff != "" {
+			if diff := cmp.Diff(want, have, cmpopts.IgnoreFields(Repo{}, "CreatedAt", "UpdatedAt")); diff != "" {
 				t.Errorf("repos (-want +got): %s", diff)
 			}
 		}

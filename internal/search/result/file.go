@@ -4,45 +4,56 @@ import (
 	"net/url"
 	"strings"
 
+	"path"
+
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/search/filter"
 	"github.com/sourcegraph/sourcegraph/internal/types"
 )
 
-type FileMatch struct {
-	Path        string
-	LineMatches []*LineMatch
-	LimitHit    bool
-
-	Symbols  []*SymbolMatch `json:"-"`
-	Repo     types.RepoName `json:"-"`
-	CommitID api.CommitID   `json:"-"`
-
+// File represents all the information we need to identify a file in a repository
+type File struct {
 	// InputRev is the Git revspec that the user originally requested to search. It is used to
 	// preserve the original revision specifier from the user instead of navigating them to the
 	// absolute commit ID when they select a result.
-	InputRev *string `json:"-"`
+	InputRev *string        `json:"-"`
+	Repo     types.RepoName `json:"-"`
+	CommitID api.CommitID   `json:"-"`
+	Path     string
+}
+
+func (f *File) URL() *url.URL {
+	var path strings.Builder
+	path.Grow(len("/@/-/blob/") + len(f.Repo.Name) + len(f.Path) + 20)
+	path.WriteRune('/')
+	path.WriteString(string(f.Repo.Name))
+	if f.InputRev != nil && len(*f.InputRev) > 0 {
+		path.WriteRune('@')
+		path.WriteString(*f.InputRev)
+	}
+	path.WriteString("/-/blob/")
+	path.WriteString(f.Path)
+	return &url.URL{Path: path.String()}
+}
+
+// FileMatch represents either:
+// - A collection of symbol results (len(Symbols) > 0)
+// - A collection of text content results (len(LineMatches) > 0)
+// - A result repsenting the whole file (len(Symbols) == 0 && len(LineMatches) == 0)
+type FileMatch struct {
+	File
+
+	LineMatches []*LineMatch
+	Symbols     []*SymbolMatch `json:"-"`
+
+	LimitHit bool
+}
+
+func (fm *FileMatch) RepoName() types.RepoName {
+	return fm.File.Repo
 }
 
 func (fm *FileMatch) searchResultMarker() {}
-
-func (fm *FileMatch) URL() string {
-	var b strings.Builder
-	var ref string
-	if fm.InputRev != nil {
-		ref = url.QueryEscape(*fm.InputRev)
-	}
-	b.Grow(len(fm.Repo.Name) + len(ref) + len(fm.Path) + len("git://?#"))
-	b.WriteString("git://")
-	b.WriteString(string(fm.Repo.Name))
-	if ref != "" {
-		b.WriteByte('?')
-		b.WriteString(ref)
-	}
-	b.WriteByte('#')
-	b.WriteString(fm.Path)
-	return b.String()
-}
 
 func (fm *FileMatch) ResultCount() int {
 	rc := len(fm.Symbols)
@@ -55,8 +66,8 @@ func (fm *FileMatch) ResultCount() int {
 	return rc
 }
 
-func (fm *FileMatch) Select(t filter.SelectPath) Match {
-	switch t.Type {
+func (fm *FileMatch) Select(selectPath filter.SelectPath) Match {
+	switch selectPath.Root() {
 	case filter.Repository:
 		return &RepoMatch{
 			Name: fm.Repo.Name,
@@ -65,12 +76,15 @@ func (fm *FileMatch) Select(t filter.SelectPath) Match {
 	case filter.File:
 		fm.LineMatches = nil
 		fm.Symbols = nil
+		if len(selectPath) > 1 && selectPath[1] == "directory" {
+			fm.Path = path.Clean(path.Dir(fm.Path)) + "/" // Add trailing slash for clarity.
+		}
 		return fm
 	case filter.Symbol:
 		if len(fm.Symbols) > 0 {
 			fm.LineMatches = nil // Only return symbol match if symbols exist
-			if len(t.Fields) > 0 {
-				filteredSymbols := SelectSymbolKind(fm.Symbols, t.Fields[0])
+			if len(selectPath) > 1 {
+				filteredSymbols := SelectSymbolKind(fm.Symbols, selectPath[1])
 				if len(filteredSymbols) == 0 {
 					return nil // Remove file match if there are no symbol results after filtering
 				}
@@ -125,6 +139,15 @@ func (fm *FileMatch) Limit(limit int) int {
 
 	fm.Symbols = fm.Symbols[:limit]
 	return 0
+}
+
+func (fm *FileMatch) Key() Key {
+	return Key{
+		TypeRank: rankFileMatch,
+		Repo:     fm.Repo.Name,
+		Commit:   fm.CommitID,
+		Path:     fm.Path,
+	}
 }
 
 // LineMatch is the struct used by vscode to receive search results for a line

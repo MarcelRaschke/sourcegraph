@@ -3,13 +3,14 @@ package gqltestutil
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hashicorp/go-multierror"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/pkg/errors"
+
 	"github.com/sourcegraph/sourcegraph/internal/lazyregexp"
 )
 
@@ -21,7 +22,7 @@ func NeedsSiteInit(baseURL string) (bool, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	p, err := ioutil.ReadAll(resp.Body)
+	p, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return false, errors.Wrap(err, "read body")
 	}
@@ -109,7 +110,7 @@ func newClient(baseURL string) (*Client, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	p, err := ioutil.ReadAll(resp.Body)
+	p, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, errors.Wrap(err, "read GET body")
 	}
@@ -160,7 +161,7 @@ func (c *Client) authenticate(path string, body interface{}) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		p, err := ioutil.ReadAll(resp.Body)
+		p, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return errors.Wrap(err, "read response body")
 		}
@@ -244,7 +245,7 @@ func (c *Client) GraphQL(token, query string, variables map[string]interface{}, 
 		req.Header.Set("Authorization", fmt.Sprintf("token %s", token))
 	} else {
 		// NOTE: We use this header to protect from CSRF attacks of HTTP API,
-		// see https://sourcegraph.com/github.com/sourcegraph/sourcegraph/-/blob/cmd/frontend/internal/cli/http.go#L41-42
+		// see https://sourcegraph.com/github.com/sourcegraph/sourcegraph@0cf1f0ca7f64e44728ab122e3f7562da7b6b5042/-/blob/cmd/frontend/internal/cli/http.go#L41-42
 		req.Header.Set("X-Requested-With", "Sourcegraph")
 		req.AddCookie(c.csrfCookie)
 		req.AddCookie(c.sessionCookie)
@@ -256,7 +257,7 @@ func (c *Client) GraphQL(token, query string, variables map[string]interface{}, 
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return errors.Wrap(err, "read response body")
 	}
@@ -296,6 +297,18 @@ func (c *Client) GraphQL(token, query string, variables map[string]interface{}, 
 // Get performs a GET request to the URL with authenticated user.
 func (c *Client) Get(url string) (*http.Response, error) {
 	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	c.addCookies(req)
+
+	return http.DefaultClient.Do(req)
+}
+
+// Post performs a POST request to the URL with authenticated user.
+func (c *Client) Post(url string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest("POST", url, body)
 	if err != nil {
 		return nil, err
 	}

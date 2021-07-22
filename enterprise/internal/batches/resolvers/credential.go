@@ -1,14 +1,16 @@
 package resolvers
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/graph-gophers/graphql-go/relay"
-	"github.com/pkg/errors"
 
+	"github.com/sourcegraph/sourcegraph/cmd/frontend/globals"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend"
 	btypes "github.com/sourcegraph/sourcegraph/enterprise/internal/batches/types"
 	"github.com/sourcegraph/sourcegraph/internal/database"
@@ -50,11 +52,19 @@ func unmarshalBatchChangesCredentialID(id graphql.ID) (credentialID int64, isSit
 		isSiteCredential = true
 	case userCredentialPrefix:
 	default:
-		return credentialID, isSiteCredential, fmt.Errorf("invalid id, unsupported credential kind %q", kind)
+		return credentialID, isSiteCredential, errors.Errorf("invalid id, unsupported credential kind %q", kind)
 	}
 
 	parsedID, err := strconv.Atoi(parts[1])
 	return int64(parsedID), isSiteCredential, err
+}
+
+func commentSSHKey(ssh auth.AuthenticatorWithSSH) string {
+	url := globals.ExternalURL()
+	if url != nil && url.Host != "" {
+		return strings.TrimRight(ssh.SSHPublicKey(), "\n") + " Sourcegraph " + url.Host
+	}
+	return ssh.SSHPublicKey()
 }
 
 type batchChangesUserCredentialResolver struct {
@@ -76,12 +86,17 @@ func (c *batchChangesUserCredentialResolver) ExternalServiceURL() string {
 	return c.credential.ExternalServiceID
 }
 
-func (c *batchChangesUserCredentialResolver) SSHPublicKey() *string {
-	if a, ok := c.credential.Credential.(auth.AuthenticatorWithSSH); ok {
-		publicKey := a.SSHPublicKey()
-		return &publicKey
+func (c *batchChangesUserCredentialResolver) SSHPublicKey(ctx context.Context) (*string, error) {
+	a, err := c.credential.Authenticator(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "retrieving authenticator")
 	}
-	return nil
+
+	if ssh, ok := a.(auth.AuthenticatorWithSSH); ok {
+		publicKey := commentSSHKey(ssh)
+		return &publicKey, nil
+	}
+	return nil, nil
 }
 
 func (c *batchChangesUserCredentialResolver) CreatedAt() graphqlbackend.DateTime {
@@ -111,12 +126,17 @@ func (c *batchChangesSiteCredentialResolver) ExternalServiceURL() string {
 	return c.credential.ExternalServiceID
 }
 
-func (c *batchChangesSiteCredentialResolver) SSHPublicKey() *string {
-	if a, ok := c.credential.Credential.(auth.AuthenticatorWithSSH); ok {
-		publicKey := a.SSHPublicKey()
-		return &publicKey
+func (c *batchChangesSiteCredentialResolver) SSHPublicKey(ctx context.Context) (*string, error) {
+	a, err := c.credential.Authenticator(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "decrypting authenticator")
 	}
-	return nil
+
+	if ssh, ok := a.(auth.AuthenticatorWithSSH); ok {
+		publicKey := commentSSHKey(ssh)
+		return &publicKey, nil
+	}
+	return nil, nil
 }
 
 func (c *batchChangesSiteCredentialResolver) CreatedAt() graphqlbackend.DateTime {

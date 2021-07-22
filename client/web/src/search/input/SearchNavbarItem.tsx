@@ -5,20 +5,22 @@ import { Form } from '@sourcegraph/branded/src/components/Form'
 import { ActivationProps } from '@sourcegraph/shared/src/components/activation/Activation'
 import { VersionContextProps } from '@sourcegraph/shared/src/search/util'
 import { SettingsCascadeProps } from '@sourcegraph/shared/src/settings/settings'
+import { TelemetryProps } from '@sourcegraph/shared/src/telemetry/telemetryService'
 import { ThemeProps } from '@sourcegraph/shared/src/theme'
 
 import {
     PatternTypeProps,
     CaseSensitivityProps,
-    CopyQueryButtonProps,
     OnboardingTourProps,
-    SearchContextProps,
+    SearchContextInputProps,
+    parseSearchURLQuery,
 } from '..'
+import { AuthenticatedUser } from '../../auth'
+import { FeatureFlagProps } from '../../featureFlags/featureFlags'
+import { VersionContext } from '../../schema/site.schema'
 import { submitSearch, QueryState } from '../helpers'
 
-import { LazyMonacoQueryInput } from './LazyMonacoQueryInput'
-import { SearchButton } from './SearchButton'
-import { useSearchOnboardingTour } from './SearchOnboardingTour'
+import { SearchBox } from './SearchBox'
 
 interface Props
     extends ActivationProps,
@@ -26,17 +28,21 @@ interface Props
         CaseSensitivityProps,
         SettingsCascadeProps,
         ThemeProps,
-        CopyQueryButtonProps,
-        SearchContextProps,
+        SearchContextInputProps,
         VersionContextProps,
-        OnboardingTourProps {
+        OnboardingTourProps,
+        TelemetryProps,
+        FeatureFlagProps {
+    authenticatedUser: AuthenticatedUser | null
     location: H.Location
     history: H.History
     navbarSearchState: QueryState
+    isSourcegraphDotCom: boolean
     onChange: (newValue: QueryState) => void
     globbing: boolean
-    enableSmartQuery: boolean
     isSearchAutoFocusRequired?: boolean
+    setVersionContext: (versionContext: string | undefined) => Promise<void>
+    availableVersionContexts: VersionContext[] | undefined
 }
 
 /**
@@ -44,6 +50,9 @@ interface Props
  */
 export const SearchNavbarItem: React.FunctionComponent<Props> = (props: Props) => {
     const autoFocus = props.isSearchAutoFocusRequired ?? true
+    // This uses the same logic as in Layout.tsx until we have a better solution
+    // or remove the search help button
+    const isSearchPage = props.location.pathname === '/search' && Boolean(parseSearchURLQuery(props.location.search))
 
     const onSubmit = useCallback(
         (event?: React.FormEvent): void => {
@@ -52,28 +61,22 @@ export const SearchNavbarItem: React.FunctionComponent<Props> = (props: Props) =
         },
         [props]
     )
-    const onboardingTourQueryInputProps = useSearchOnboardingTour({
-        ...props,
-        inputLocation: 'global-navbar',
-        queryState: props.navbarSearchState,
-        setQueryState: props.onChange,
-    })
 
     return (
         <Form
             className="search--navbar-item d-flex align-items-flex-start flex-grow-1 flex-shrink-past-contents"
             onSubmit={onSubmit}
         >
-            <LazyMonacoQueryInput
+            <SearchBox
                 {...props}
-                {...onboardingTourQueryInputProps}
                 hasGlobalQueryBehavior={true}
                 queryState={props.navbarSearchState}
                 onSubmit={onSubmit}
                 autoFocus={autoFocus}
-                showSearchContextHighlightTourStep={true}
+                showSearchContextFeatureTour={true}
+                isSearchOnboardingTourVisible={false}
+                hideHelpButton={isSearchPage}
             />
-            <SearchButton />
         </Form>
     )
 }

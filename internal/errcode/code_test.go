@@ -1,10 +1,11 @@
 package errcode_test
 
 import (
-	"errors"
 	"net/http"
 	"os"
 	"testing"
+
+	"github.com/cockroachdb/errors"
 
 	"github.com/sourcegraph/sourcegraph/internal/errcode"
 )
@@ -24,6 +25,17 @@ func TestHTTP(t *testing.T) {
 		if c != test.want {
 			t.Errorf("error %q: got %d, want %d", test.err, c, test.want)
 		}
+	}
+}
+
+func TestMakeNonRetryable(t *testing.T) {
+	err := errors.New("foo")
+	if errcode.IsNonRetryable(err) {
+		t.Errorf("unexpected non-retryable error: %+v", err)
+	}
+
+	if nrerr := errcode.MakeNonRetryable(err); !errcode.IsNonRetryable(nrerr) {
+		t.Errorf("unexpected retryable error: %+v", nrerr)
 	}
 }
 

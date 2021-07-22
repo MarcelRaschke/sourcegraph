@@ -6,14 +6,15 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/database"
 	"github.com/sourcegraph/sourcegraph/internal/encryption/keyring"
 
 	"github.com/RoaringBitmap/roaring"
+	"github.com/cockroachdb/errors"
 	"github.com/keegancsmith/sqlf"
 	"github.com/lib/pq"
 	otlog "github.com/opentracing/opentracing-go/log"
-	"github.com/pkg/errors"
 
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/authz"
@@ -37,7 +38,7 @@ type PermsStore struct {
 	clock func() time.Time
 }
 
-// NewPermsStore returns a new PermsStore with given parameters.
+// Perms returns a new PermsStore with given parameters.
 func Perms(db dbutil.DB, clock func() time.Time) *PermsStore {
 	return &PermsStore{Store: basestore.NewWithDB(db, sql.TxOptions{}), clock: clock}
 }
@@ -632,7 +633,7 @@ func (s *PermsStore) loadUserPendingPermissionsIDs(ctx context.Context, q *sqlf.
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var id uint32
@@ -947,7 +948,7 @@ AND service_id = %s
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var bindID string
@@ -1131,7 +1132,7 @@ ORDER BY id ASC
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var (
@@ -1214,7 +1215,7 @@ AND account_id IN (%s)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	userIDs := make(map[string]int32)
 	for rows.Next() {
@@ -1235,14 +1236,21 @@ AND account_id IN (%s)
 // UserIDsWithNoPerms returns a list of user IDs with no permissions found in
 // the database.
 func (s *PermsStore) UserIDsWithNoPerms(ctx context.Context) ([]int32, error) {
+	// By default, site admins can access any repo
+	filterSiteAdmins := sqlf.Sprintf("users.site_admin = FALSE")
+	// Unless we enforce it in config
+	if conf.Get().AuthzEnforceForSiteAdmins {
+		filterSiteAdmins = sqlf.Sprintf("TRUE")
+	}
+
 	q := sqlf.Sprintf(`
 -- source: enterprise/internal/database/perms_store.go:PermsStore.UserIDsWithNoPerms
 SELECT users.id, NULL FROM users
-WHERE users.site_admin = FALSE
-AND users.deleted_at IS NULL
+WHERE users.deleted_at IS NULL
+AND %s
 AND users.id NOT IN
 	(SELECT perms.user_id FROM user_permissions AS perms)
-`)
+`, filterSiteAdmins)
 	results, err := s.loadIDsWithTime(ctx, q)
 	if err != nil {
 		return nil, err
@@ -1255,7 +1263,7 @@ AND users.id NOT IN
 	return ids, nil
 }
 
-// UserIDsWithNoPerms returns a list of private repository IDs with no permissions
+// RepoIDsWithNoPerms returns a list of private repository IDs with no permissions
 // found in the database.
 func (s *PermsStore) RepoIDsWithNoPerms(ctx context.Context) ([]api.RepoID, error) {
 	q := sqlf.Sprintf(`
@@ -1328,7 +1336,7 @@ func (s *PermsStore) loadIDsWithTime(ctx context.Context, q *sqlf.Query) (map[in
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	results := make(map[int32]time.Time)
 	for rows.Next() {

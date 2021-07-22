@@ -9,14 +9,15 @@ import { LSIFIndexState } from '@sourcegraph/shared/src/graphql-operations'
 import { TelemetryProps } from '@sourcegraph/shared/src/telemetry/telemetryService'
 import { asError, ErrorLike, isErrorLike } from '@sourcegraph/shared/src/util/errors'
 import { useObservable } from '@sourcegraph/shared/src/util/useObservable'
+import { PageHeader } from '@sourcegraph/wildcard'
 
 import { ErrorAlert } from '../../../components/alerts'
-import { PageHeader } from '../../../components/PageHeader'
 import { PageTitle } from '../../../components/PageTitle'
 import { LsifIndexFields } from '../../../graphql-operations'
 import { CodeIntelStateBanner } from '../shared/CodeIntelStateBanner'
 
 import { deleteLsifIndex, fetchLsifIndex as defaultFetchLsifIndex } from './backend'
+import { CodeIntelAssociatedUpload } from './CodeIntelAssociatedUpload'
 import { CodeIntelIndexMeta } from './CodeIntelIndexMeta'
 import { CodeIntelIndexTimeline } from './CodeIntelIndexTimeline'
 
@@ -84,7 +85,7 @@ export const CodeIntelIndexPage: FunctionComponent<CodeIntelIndexPageProps> = ({
     ) : isErrorLike(deletionOrError) ? (
         <ErrorAlert prefix="Error deleting LSIF index record" error={deletionOrError} />
     ) : (
-        <div className="site-admin-lsif-index-page w-100 web-content">
+        <div className="site-admin-lsif-index-page w-100">
             <PageTitle title="Code intelligence - auto-indexing" />
             {isErrorLike(indexOrError) ? (
                 <ErrorAlert prefix="Error loading LSIF index" error={indexOrError} />
@@ -110,6 +111,7 @@ export const CodeIntelIndexPage: FunctionComponent<CodeIntelIndexPageProps> = ({
                         actions={<CodeIntelDeleteIndex deleteIndex={deleteIndex} deletionOrError={deletionOrError} />}
                         className="mb-3"
                     />
+
                     <CodeIntelStateBanner
                         state={indexOrError.state}
                         placeInQueue={indexOrError.placeInQueue}
@@ -118,11 +120,10 @@ export const CodeIntelIndexPage: FunctionComponent<CodeIntelIndexPageProps> = ({
                         pluralTypeName="indexes"
                         className={classNamesByState.get(indexOrError.state)}
                     />
-                    <div className="card mb-3">
-                        <div className="card-body">
-                            <CodeIntelIndexMeta node={indexOrError} now={now} />
-                        </div>
-                    </div>
+                    <CodeIntelIndexMeta node={indexOrError} now={now} />
+                    <CodeIntelAssociatedUpload node={indexOrError} now={now} />
+
+                    <h3>Timeline</h3>
                     <CodeIntelIndexTimeline index={indexOrError} now={now} className="mb-3" />
                 </>
             )}

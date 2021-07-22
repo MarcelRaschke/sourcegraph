@@ -14,7 +14,7 @@ import (
 	ct "github.com/sourcegraph/sourcegraph/enterprise/internal/batches/testing"
 	btypes "github.com/sourcegraph/sourcegraph/enterprise/internal/batches/types"
 	"github.com/sourcegraph/sourcegraph/internal/database"
-	"github.com/sourcegraph/sourcegraph/internal/database/dbtesting"
+	"github.com/sourcegraph/sourcegraph/internal/database/dbtest"
 	"github.com/sourcegraph/sourcegraph/internal/types"
 )
 
@@ -24,11 +24,11 @@ func TestChangesetApplyPreviewResolver(t *testing.T) {
 	}
 
 	ctx := backend.WithAuthzBypass(context.Background())
-	db := dbtesting.GetDB(t)
+	db := dbtest.NewDB(t, "")
 
 	userID := ct.CreateTestUser(t, db, false).ID
 
-	cstore := store.New(db)
+	cstore := store.New(db, nil)
 
 	// Create a batch spec for the target batch change.
 	oldBatchSpec := &btypes.BatchSpec{

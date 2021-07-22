@@ -4,14 +4,15 @@ import (
 	"context"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/graph-gophers/graphql-go"
-	"github.com/pkg/errors"
 
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/backend"
 	gql "github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend"
 	"github.com/sourcegraph/sourcegraph/enterprise/cmd/frontend/internal/codeintel/resolvers"
 	store "github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/stores/dbstore"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
+	"github.com/sourcegraph/sourcegraph/internal/database/dbconn"
 	"github.com/sourcegraph/sourcegraph/internal/database/dbutil"
 )
 
@@ -51,17 +52,26 @@ func (r *Resolver) NodeResolvers() map[string]gql.NodeByIDFunc {
 }
 
 func (r *Resolver) LSIFUploadByID(ctx context.Context, id graphql.ID) (gql.LSIFUploadResolver, error) {
+	// 🚨 SECURITY: Only site admins may see LSIF upload data
+	if err := backend.CheckCurrentUserIsSiteAdmin(ctx, dbconn.Global); err != nil {
+		return nil, err
+	}
+
 	uploadID, err := unmarshalLSIFUploadGQLID(id)
 	if err != nil {
 		return nil, err
 	}
 
-	upload, exists, err := r.resolver.GetUploadByID(ctx, int(uploadID))
+	// Create a new prefetcher here as we only want to cache upload and index records in
+	// the same graphQL request, not across different request.
+	prefetcher := NewPrefetcher(r.resolver)
+
+	upload, exists, err := prefetcher.GetUploadByID(ctx, int(uploadID))
 	if err != nil || !exists {
 		return nil, err
 	}
 
-	return NewUploadResolver(upload, r.locationResolver), nil
+	return NewUploadResolver(upload, prefetcher, r.locationResolver), nil
 }
 
 func (r *Resolver) LSIFUploads(ctx context.Context, args *gql.LSIFUploadsQueryArgs) (gql.LSIFUploadConnectionResolver, error) {
@@ -70,17 +80,26 @@ func (r *Resolver) LSIFUploads(ctx context.Context, args *gql.LSIFUploadsQueryAr
 }
 
 func (r *Resolver) LSIFUploadsByRepo(ctx context.Context, args *gql.LSIFRepositoryUploadsQueryArgs) (gql.LSIFUploadConnectionResolver, error) {
+	// 🚨 SECURITY: Only site admins may see LSIF upload data
+	if err := backend.CheckCurrentUserIsSiteAdmin(ctx, dbconn.Global); err != nil {
+		return nil, err
+	}
+
 	opts, err := makeGetUploadsOptions(ctx, args)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewUploadConnectionResolver(r.resolver.UploadConnectionResolver(opts), r.locationResolver), nil
+	// Create a new prefetcher here as we only want to cache upload and index records in
+	// the same graphQL request, not across different request.
+	prefetcher := NewPrefetcher(r.resolver)
+
+	return NewUploadConnectionResolver(r.resolver.UploadConnectionResolver(opts), prefetcher, r.locationResolver), nil
 }
 
 func (r *Resolver) DeleteLSIFUpload(ctx context.Context, args *struct{ ID graphql.ID }) (*gql.EmptyResponse, error) {
 	// 🚨 SECURITY: Only site admins may delete LSIF data for now
-	if err := backend.CheckCurrentUserIsSiteAdmin(ctx); err != nil {
+	if err := backend.CheckCurrentUserIsSiteAdmin(ctx, dbconn.Global); err != nil {
 		return nil, err
 	}
 
@@ -103,17 +122,26 @@ func (r *Resolver) LSIFIndexByID(ctx context.Context, id graphql.ID) (gql.LSIFIn
 		return nil, errAutoIndexingNotEnabled
 	}
 
+	// 🚨 SECURITY: Only site admins may see LSIF index data
+	if err := backend.CheckCurrentUserIsSiteAdmin(ctx, dbconn.Global); err != nil {
+		return nil, err
+	}
+
 	indexID, err := unmarshalLSIFIndexGQLID(id)
 	if err != nil {
 		return nil, err
 	}
 
-	index, exists, err := r.resolver.GetIndexByID(ctx, int(indexID))
+	// Create a new prefetcher here as we only want to cache upload and index records in
+	// the same graphQL request, not across different request.
+	prefetcher := NewPrefetcher(r.resolver)
+
+	index, exists, err := prefetcher.GetIndexByID(ctx, int(indexID))
 	if err != nil || !exists {
 		return nil, err
 	}
 
-	return NewIndexResolver(index, r.locationResolver), nil
+	return NewIndexResolver(index, prefetcher, r.locationResolver), nil
 }
 
 func (r *Resolver) LSIFIndexes(ctx context.Context, args *gql.LSIFIndexesQueryArgs) (gql.LSIFIndexConnectionResolver, error) {
@@ -130,12 +158,21 @@ func (r *Resolver) LSIFIndexesByRepo(ctx context.Context, args *gql.LSIFReposito
 		return nil, errAutoIndexingNotEnabled
 	}
 
+	// 🚨 SECURITY: Only site admins may see LSIF index data
+	if err := backend.CheckCurrentUserIsSiteAdmin(ctx, dbconn.Global); err != nil {
+		return nil, err
+	}
+
 	opts, err := makeGetIndexesOptions(ctx, args)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewIndexConnectionResolver(r.resolver.IndexConnectionResolver(opts), r.locationResolver), nil
+	// Create a new prefetcher here as we only want to cache upload and index records in
+	// the same graphQL request, not across different request.
+	prefetcher := NewPrefetcher(r.resolver)
+
+	return NewIndexConnectionResolver(r.resolver.IndexConnectionResolver(opts), prefetcher, r.locationResolver), nil
 }
 
 func (r *Resolver) DeleteLSIFIndex(ctx context.Context, args *struct{ ID graphql.ID }) (*gql.EmptyResponse, error) {
@@ -144,7 +181,7 @@ func (r *Resolver) DeleteLSIFIndex(ctx context.Context, args *struct{ ID graphql
 	}
 
 	// 🚨 SECURITY: Only site admins may delete LSIF data for now
-	if err := backend.CheckCurrentUserIsSiteAdmin(ctx); err != nil {
+	if err := backend.CheckCurrentUserIsSiteAdmin(ctx, dbconn.Global); err != nil {
 		return nil, err
 	}
 
@@ -184,7 +221,7 @@ func (r *Resolver) UpdateRepositoryIndexConfiguration(ctx context.Context, args 
 	}
 
 	// 🚨 SECURITY: Only site admins may configure indexing jobs for now
-	if err := backend.CheckCurrentUserIsSiteAdmin(ctx); err != nil {
+	if err := backend.CheckCurrentUserIsSiteAdmin(ctx, dbconn.Global); err != nil {
 		return nil, err
 	}
 

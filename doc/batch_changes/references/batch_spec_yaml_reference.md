@@ -5,7 +5,7 @@
 
 /* The sidebar on this page contains a lot of long identifiers without
 whitespace. In order to make them more readable we increase the width of the
-sidebar. /*
+sidebar. */
 @media (min-width: 1200px) {
   body > #page > main > #index {
     width: 35%;
@@ -161,7 +161,7 @@ The shell command to run in the container. It can also be a multi-line shell scr
 <span class="badge badge-feature">Templating</span> <code>steps.run</code> can include <a href="batch_spec_templating">template variables</a> in Sourcegraph 3.22 and <a href="https://github.com/sourcegraph/src-cli">Sourcegraph CLI</a> 3.21.5.
 </aside>
 
-## [`steps.container`](#steps-run)
+## [`steps.container`](#steps-container)
 
 The Docker image used to launch the Docker container in which the shell command is run.
 
@@ -343,6 +343,77 @@ The format of the corresponding [`steps.outputs.<name>.value`](#outputs-value). 
 
 Possible values: `text`, `yaml`, `json`. Default is `text`.
 
+## [`steps.if`](#steps-if)
+
+> NOTE: This feature is only available in Sourcegraph 3.28 and later with Sourcegraph CLI 3.28 and later.
+
+Condition to check before executing the step. If the value of the `if:` attribute is `true` (boolean) or `"true"` (string) then the step is executed in the given repository (or workspace, in case [workspaces](#workspaces) are used). Otherwise the step is skipped.
+
+As an optimization, the [Sourcegraph CLI](../../cli/index.md) tries to evaluate the condition _before_ starting to execute any `steps`. If the condition can be evaluated ahead of time and the result of the evaluation is false then the execution of the step won't be attempted for the repository, which leads to better cache utilization.
+
+Ahead-of-time evaluation is possible if the condition contains only static data. Example: `if: ${{ eq repository.name "github.com/my-org/my-repo" }}`. The repository name is known before the execution of the steps, so evaluation succeeds and Sourcegraph CLI will not include the given step in the list of steps to execute for repositories that don't have the matching name. That in turn allows the modification of this step's `run` attribute, for example, without invalidating the cache for the repositories in which it's never executed.
+
+<aside class="note">
+<span class="badge badge-feature">Templating</span> The <code>steps.if</code> condition can make use of <a href="batch_spec_templating">templating</a>.
+</aside>
+
+### Examples
+
+```yaml
+steps:
+  # `if:` is true, step always executes.
+  - if: true
+    run: echo "name of repository is ${{ repository.name }}" >> message.txt
+    container: alpine:3
+```
+
+```yaml
+steps:
+  # `if:` is a static string that's not "true", step never executes.
+  - if: "random string"
+    run: echo "name of repository is ${{ repository.name }}" >> message.txt
+    container: alpine:3
+```
+
+```yaml
+steps:
+  # `if:` uses templating to check for repository name and produce a "true". Only runs in github.com/sourcegraph/automation-testing
+  - if: ${{ eq repository.name "github.com/sourcegraph/automation-testing" }}
+    run: echo "hello from automation-testing" >> message.txt
+    container: alpine:3
+```
+
+```yaml
+steps:
+  # `if:` uses glob pattern to match repository name and produce "true" on match.
+  - if: ${{ matches repository.name "*sourcegraph-testing*" }}
+    run: echo "name contains sourcegraph-testing" >> message.txt
+    container: alpine:3
+```
+
+```yaml
+steps:
+  # First step prints to standard out and saves to outputs
+  - run:  if [[ -f "go.mod" ]]; then echo "true"; else echo "false"; fi
+    container: alpine:3
+    outputs:
+      goModExists:
+        value: ${{ step.stdout }}
+
+  # `if:` uses the just-set `outputs.goModExists` value as condition
+  - if: ${{ outputs.goModExists }}
+    run: go fmt ./...
+    container: golang
+```
+
+```yaml
+steps:
+  # `if:` checks for path, in case steps are executed in workspace.
+  - if: ${{ eq steps.path "sub/directory/in/repo" }}
+    run: echo "hello workspace" >> workspace.txt
+    container: golang
+```
+
 ## [`importChangesets`](#importchangesets)
 
 An array describing which already-existing changesets should be imported from the code host into the batch change.
@@ -469,7 +540,7 @@ changesetTemplate:
 
 ## [`changesetTemplate.published`](#changesettemplate-published)
 
-Whether to publish the changeset. This may be a boolean value (ie `true` or `false`), `'draft'`, or [an array to only publish some changesets within the batch change](#publishing-only-specific-changesets).
+Whether to publish the changeset. This may be a boolean value (ie `true` or `false`), `'draft'`, or [an array to only publish some changesets within the batch change](#publishing-only-specific-changesets). This may also be omitted, in which case the publication state will be controlled through the Sourcegraph UI, and will default to unpublished (that is, the same as specifying `false`).
 
 An unpublished changeset can be previewed on Sourcegraph by any person who can view the batch change, but its commit, branch, and pull request aren't created on the code host.
 
@@ -642,7 +713,7 @@ The name is relative to the root of the repository.
 
 The branch that should be used for this additional changeset. This **overwrites the [`changesetTemplate.branch`](#changesettemplate-branch)** when creating the additional changeset.
 
-**Important**: the branch can _not_ be nested under the [`changesetTemplate.branch`](#changesettemplate-branch), i.e. if the `changesetTemplate.branch` is `my-batch-change` then this can _not_ be `my-batch-change/my-subdirectory` since [git doesn't allow that](https://stackoverflow.com/a/22630664).
+**Important**: the branch can _not_ be nested under the [`changesetTemplate.branch`](#changesettemplate-branch), i.e. if the `changesetTemplate.branch` is `my-batch-change` then this can _not_ be `my-batch-change/my-subdirectory` since [git doesn't allow that](https://stackoverflow.com/a/22630664). Additionally branch names must be unique and cannot be used as arguments for multiple `directory` fields.
 
 ## [`transformChanges.group.repository`](#transformchanges-repository)
 

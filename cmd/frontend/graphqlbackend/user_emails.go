@@ -2,9 +2,9 @@ package graphqlbackend
 
 import (
 	"context"
-	"errors"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/inconshreveable/log15"
 
@@ -12,17 +12,18 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/authz"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/database"
+	"github.com/sourcegraph/sourcegraph/internal/database/dbutil"
 )
 
 var timeNow = time.Now
 
 func (r *UserResolver) Emails(ctx context.Context) ([]*userEmailResolver, error) {
 	// 🚨 SECURITY: Only the self user and site admins can fetch a user's emails.
-	if err := backend.CheckSiteAdminOrSameUser(ctx, r.user.ID); err != nil {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, r.db, r.user.ID); err != nil {
 		return nil, err
 	}
 
-	userEmails, err := database.GlobalUserEmails.ListByUser(ctx, database.UserEmailsListOptions{
+	userEmails, err := database.UserEmails(r.db).ListByUser(ctx, database.UserEmailsListOptions{
 		UserID: r.user.ID,
 	})
 	if err != nil {
@@ -32,6 +33,7 @@ func (r *UserResolver) Emails(ctx context.Context) ([]*userEmailResolver, error)
 	rs := make([]*userEmailResolver, len(userEmails))
 	for i, userEmail := range userEmails {
 		rs[i] = &userEmailResolver{
+			db:        r.db,
 			userEmail: *userEmail,
 			user:      r,
 		}
@@ -40,6 +42,7 @@ func (r *UserResolver) Emails(ctx context.Context) ([]*userEmailResolver, error)
 }
 
 type userEmailResolver struct {
+	db        dbutil.DB
 	userEmail database.UserEmail
 	user      *UserResolver
 }
@@ -47,7 +50,7 @@ type userEmailResolver struct {
 func (r *userEmailResolver) Email() string { return r.userEmail.Email }
 
 func (r *userEmailResolver) IsPrimary(ctx context.Context) (bool, error) {
-	email, _, err := database.GlobalUserEmails.GetPrimaryEmail(ctx, r.user.user.ID)
+	email, _, err := database.UserEmails(r.db).GetPrimaryEmail(ctx, r.user.user.ID)
 	if err != nil {
 		return false, err
 	}
@@ -61,7 +64,7 @@ func (r *userEmailResolver) VerificationPending() bool {
 func (r *userEmailResolver) User() *UserResolver { return r.user }
 
 func (r *userEmailResolver) ViewerCanManuallyVerify(ctx context.Context) (bool, error) {
-	if err := backend.CheckCurrentUserIsSiteAdmin(ctx); err == backend.ErrNotAuthenticated || err == backend.ErrMustBeSiteAdmin {
+	if err := backend.CheckCurrentUserIsSiteAdmin(ctx, r.db); err == backend.ErrNotAuthenticated || err == backend.ErrMustBeSiteAdmin {
 		return false, nil
 	} else if err != nil {
 		return false, err
@@ -77,7 +80,7 @@ func (r *schemaResolver) AddUserEmail(ctx context.Context, args *struct {
 	if err != nil {
 		return nil, err
 	}
-	if err := backend.UserEmails.Add(ctx, userID, args.Email); err != nil {
+	if err := backend.UserEmails.Add(ctx, r.db, userID, args.Email); err != nil {
 		return nil, err
 	}
 
@@ -100,16 +103,16 @@ func (r *schemaResolver) RemoveUserEmail(ctx context.Context, args *struct {
 	}
 
 	// 🚨 SECURITY: Only the user and site admins can remove an email address from a user.
-	if err := backend.CheckSiteAdminOrSameUser(ctx, userID); err != nil {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, r.db, userID); err != nil {
 		return nil, err
 	}
 
-	if err := database.GlobalUserEmails.Remove(ctx, userID, args.Email); err != nil {
+	if err := database.UserEmails(r.db).Remove(ctx, userID, args.Email); err != nil {
 		return nil, err
 	}
 
 	// 🚨 SECURITY: If an email is removed, invalidate any existing password reset tokens that may have been sent to that email.
-	if err := database.GlobalUsers.DeletePasswordResetCode(ctx, userID); err != nil {
+	if err := database.Users(r.db).DeletePasswordResetCode(ctx, userID); err != nil {
 		return nil, err
 	}
 
@@ -132,11 +135,11 @@ func (r *schemaResolver) SetUserEmailPrimary(ctx context.Context, args *struct {
 	}
 
 	// 🚨 SECURITY: Only the user and site admins can set the primary email address from a user.
-	if err := backend.CheckSiteAdminOrSameUser(ctx, userID); err != nil {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, r.db, userID); err != nil {
 		return nil, err
 	}
 
-	if err := database.GlobalUserEmails.SetPrimaryEmail(ctx, userID, args.Email); err != nil {
+	if err := database.UserEmails(r.db).SetPrimaryEmail(ctx, userID, args.Email); err != nil {
 		return nil, err
 	}
 
@@ -156,7 +159,7 @@ func (r *schemaResolver) SetUserEmailVerified(ctx context.Context, args *struct 
 }) (*EmptyResponse, error) {
 	// 🚨 SECURITY: Only site admins (NOT users themselves) can manually set email verification
 	// status. Users themselves must go through the normal email verification process.
-	if err := backend.CheckCurrentUserIsSiteAdmin(ctx); err != nil {
+	if err := backend.CheckCurrentUserIsSiteAdmin(ctx, r.db); err != nil {
 		return nil, err
 	}
 
@@ -164,7 +167,7 @@ func (r *schemaResolver) SetUserEmailVerified(ctx context.Context, args *struct 
 	if err != nil {
 		return nil, err
 	}
-	if err := database.GlobalUserEmails.SetVerified(ctx, userID, args.Email, args.Verified); err != nil {
+	if err := database.UserEmails(r.db).SetVerified(ctx, userID, args.Email, args.Verified); err != nil {
 		return nil, err
 	}
 
@@ -191,16 +194,16 @@ func (r *schemaResolver) ResendVerificationEmail(ctx context.Context, args *stru
 		return nil, err
 	}
 	// 🚨 SECURITY: Only the user and site admins can set the primary email address from a user.
-	if err := backend.CheckSiteAdminOrSameUser(ctx, userID); err != nil {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, r.db, userID); err != nil {
 		return nil, err
 	}
 
-	user, err := database.GlobalUsers.GetByID(ctx, userID)
+	user, err := database.Users(r.db).GetByID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	lastSent, err := database.GlobalUserEmails.GetLatestVerificationSentEmail(ctx, args.Email)
+	lastSent, err := database.UserEmails(r.db).GetLatestVerificationSentEmail(ctx, args.Email)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +213,7 @@ func (r *schemaResolver) ResendVerificationEmail(ctx context.Context, args *stru
 		return nil, errors.New("Last verification email sent too recently")
 	}
 
-	email, verified, err := database.GlobalUserEmails.Get(ctx, userID, args.Email)
+	email, verified, err := database.UserEmails(r.db).Get(ctx, userID, args.Email)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +226,7 @@ func (r *schemaResolver) ResendVerificationEmail(ctx context.Context, args *stru
 		return nil, err
 	}
 
-	err = database.GlobalUserEmails.SetLastVerification(ctx, userID, email, code)
+	err = database.UserEmails(r.db).SetLastVerification(ctx, userID, email, code)
 	if err != nil {
 		return nil, err
 	}

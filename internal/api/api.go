@@ -3,6 +3,7 @@ package api
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -13,6 +14,10 @@ type RepoID int32
 //
 // Previously, this was called RepoURI.
 type RepoName string
+
+func (r RepoName) Equal(o RepoName) bool {
+	return strings.EqualFold(string(r), string(o))
+}
 
 // CommitID is the 40-character SHA-1 hash for a Git commit.
 type CommitID string
@@ -39,11 +44,6 @@ type Repo struct {
 	// Enabled is whether the repository is enabled. Disabled repositories are
 	// not accessible by users (except site admins).
 	Enabled bool
-}
-
-func (Repo) Fork() bool {
-	// TODO(sqs): update callers
-	return false
 }
 
 // ExternalRepoSpec specifies a repository on an external service (such as GitHub or GitLab).

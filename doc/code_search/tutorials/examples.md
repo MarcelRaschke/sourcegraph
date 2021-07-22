@@ -17,6 +17,12 @@ type:diff repo:@*refs/heads/ after:"5 days ago"
 -file:\.(json|md|txt)$ hack|todo|kludge|fixme
 ```
 
+[Removal of TODOs in the repository commit log](https://sourcegraph.com/search?q=repo:%5Egithub%5C.com/sourcegraph/sourcegraph%24+type:diff+TODO+select:commit.diff.removed+&patternType=literal)
+
+```sgquery
+repo:^github\.com/sourcegraph/sourcegraph$ type:diff select:commit.diff.removed TODO
+```
+
 [New usages of a function](https://sourcegraph.com/search?q=repo:github%5C.com/sourcegraph/+type:diff+after:%221+week+ago%22+%5C.subscribe%5C%28+lang:typescript&patternType=regexp)<br/>
 
 ```sgquery
@@ -51,6 +57,12 @@ licensed to the apache software foundation select:file
 
 ```sgquery
 file:package.json type:diff after:"1 week ago" select:repo
+```
+
+[Search changes in a files that contain a keyword](https://sourcegraph.com/search?q=context:global+repo:%5Egithub%5C.com/sourcegraph/sourcegraph%24+type:diff+file:contains.content%28%22golang%5C.org/x/sync/errgroup%22%29+.Go&patternType=literal)
+
+```sgquery
+repo:^github\.com/sourcegraph/sourcegraph$ type:diff file:contains.content("golang\.org/x/sync/errgroup") .Go
 ```
 
 ## When to use regex search mode

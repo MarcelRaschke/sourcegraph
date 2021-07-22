@@ -9,8 +9,8 @@ import (
 //
 // You can make any customization you want to a graph panel by using `ObservablePanel.With`:
 //
-//   Panel: monitoring.Panel().With(func(o monitoring.Observable, g *sdk.GraphPanel) {
-//     // modify 'g' with desired changes
+//   Panel: monitoring.Panel().With(func(o monitoring.Observable, p *sdk.Panel) {
+//     // modify 'p.GraphPanel' or 'p.HeatmapPanel' etc. with desired changes
 //   }),
 //
 // When writing a custom `ObservablePanelOption`, keep in mind that:
@@ -20,6 +20,9 @@ import (
 //
 // - The observable being graphed is configured in `Targets[0]`.
 // Customize it by editing it directly, e.g. `Targets[0].Property = Value`.
+//
+// - For options that will be shared (i.e. added to `monitoring.PanelOptions`), make sure
+// to support all valid `PanelType`s defined by this package by checking for `o.Panel.panelType`.
 //
 // If an option could be leveraged by multiple observables, a shared panel option can be
 // defined in the `monitoring` package.
@@ -31,7 +34,7 @@ import (
 //   Panel: monitoring.Panel().With(monitoring.PanelOptions.MyCustomization),
 //
 // Using a shared prefix helps with discoverability of available options.
-type ObservablePanelOption func(Observable, *sdk.GraphPanel)
+type ObservablePanelOption func(Observable, *sdk.Panel)
 
 // PanelOptions exports available shared `ObservablePanelOption` implementations.
 //
@@ -50,39 +53,57 @@ type panelOptionsLibrary struct{}
 //
 // All ObservablePanelOptions start with this option.
 func (panelOptionsLibrary) basicPanel() ObservablePanelOption {
-	return func(o Observable, g *sdk.GraphPanel) {
-		g.Legend.Show = true
-		g.Fill = 1
-		g.Lines = true
-		g.Linewidth = 1
-		g.Pointradius = 2
-		g.AliasColors = map[string]string{}
-		g.Xaxis = sdk.Axis{
-			Show: true,
-		}
-		g.Targets = []sdk.Target{{
-			Expr: o.Query,
-		}}
-		g.Yaxes = []sdk.Axis{
-			{
-				Decimals: 0,
-				LogBase:  1,
-				Show:     true,
-			},
-			{
-				// Most graphs will not need the right Y axis, disable by default.
-				Show: false,
-			},
+	return func(o Observable, p *sdk.Panel) {
+		switch p.OfType {
+		case sdk.GraphType:
+			g := p.GraphPanel
+			if g == nil {
+				return
+			}
+			g.Legend.Show = true
+			g.Fill = 1
+			g.Lines = true
+			g.Linewidth = 1
+			g.Pointradius = 2
+			g.AliasColors = map[string]string{}
+			g.Xaxis = sdk.Axis{
+				Show: true,
+			}
+			g.Targets = []sdk.Target{{
+				Expr: o.Query,
+			}}
+			g.Yaxes = []sdk.Axis{
+				{
+					Decimals: 0,
+					LogBase:  1,
+					Show:     true,
+				},
+				{
+					// Most graphs will not need the right Y axis, disable by default.
+					Show: false,
+				},
+			}
+		case sdk.HeatmapType:
+			h := p.HeatmapPanel
+			h.Targets = []sdk.Target{{
+				Expr: o.Query,
+			}}
+			h.Color.Mode = "spectrum"
+			h.Color.ColorScheme = "interpolateViridis"
+			h.YAxis.LogBase = 2
+			h.Tooltip.Show = true
+			h.Tooltip.ShowHistogram = true
+			h.Legend.Show = true
 		}
 	}
 }
 
-// OptionOpinionatedDefaults sets some opinionated default properties aimed at
-// encouraging good dashboard practices.
+// OpinionatedGraphPanelDefaults sets some opinionated default properties aimed at
+// encouraging good dashboard practices. It is applied in the default `PanelOptions()`.
 //
-// It is applied in the default PanelOptions().
-func (panelOptionsLibrary) OpinionatedDefaults() ObservablePanelOption {
-	return func(o Observable, g *sdk.GraphPanel) {
+// Only supports `PanelTypeGraph`.
+func (panelOptionsLibrary) OpinionatedGraphPanelDefaults() ObservablePanelOption {
+	return func(o Observable, p *sdk.Panel) {
 		// We use "value" as the default legend format and not, say, "{{instance}}" or
 		// an empty string (Grafana defaults to all labels in that case) because:
 		//
@@ -91,6 +112,7 @@ func (panelOptionsLibrary) OpinionatedDefaults() ObservablePanelOption {
 		// 3. If "{{instance}}" or similar was the default, it would be easy for people to say "I guess that's intentional"
 		//    instead of seeing multiple "value" labels on their dashboard (which immediately makes them think
 		//    "how can I fix that?".)
+		g := p.GraphPanel
 		g.Targets[0].LegendFormat = "value"
 		// Most metrics will have a minimum value of 0.
 		g.Yaxes[0].Min = sdk.NewFloatString(0.0)
@@ -103,10 +125,12 @@ func (panelOptionsLibrary) OpinionatedDefaults() ObservablePanelOption {
 }
 
 // AlertThresholds draws threshold lines based on the Observable's configured alerts.
+// It is applied in the default `PanelOptions()`.
 //
-// It is applied in the default PanelOptions().
+// Only supports `PanelTypeGraph`.
 func (panelOptionsLibrary) AlertThresholds() ObservablePanelOption {
-	return func(o Observable, g *sdk.GraphPanel) {
+	return func(o Observable, p *sdk.Panel) {
+		g := p.GraphPanel
 		if o.Warning != nil && o.Warning.greaterThan {
 			// Warning threshold
 			g.Thresholds = append(g.Thresholds, sdk.Threshold{
@@ -152,55 +176,87 @@ func (panelOptionsLibrary) AlertThresholds() ObservablePanelOption {
 
 // ColorOverride takes a seriesName (which can be a regex pattern) and a color in hex format (#ABABAB).
 // Series that match the seriesName will be colored accordingly.
+//
+// Only supports `PanelTypeGraph`.
 func (panelOptionsLibrary) ColorOverride(seriesName string, color string) ObservablePanelOption {
-	return func(_ Observable, panel *sdk.GraphPanel) {
-		panel.SeriesOverrides = append(panel.SeriesOverrides, sdk.SeriesOverride{
+	return func(_ Observable, panel *sdk.Panel) {
+		panel.GraphPanel.SeriesOverrides = append(panel.GraphPanel.SeriesOverrides, sdk.SeriesOverride{
 			Alias: seriesName,
 			Color: &color,
 		})
 	}
 }
 
-// LegendOnRight moves the legend to the right side of the panel
+// LegendOnRight moves the legend to the right side of the panel.
+//
+// Only supports `PanelTypeGraph`.
 func (panelOptionsLibrary) LegendOnRight() ObservablePanelOption {
-	return func(_ Observable, panel *sdk.GraphPanel) {
-		panel.Legend.RightSide = true
+	return func(_ Observable, panel *sdk.Panel) {
+		panel.GraphPanel.Legend.RightSide = true
 	}
 }
 
-// HoverShowAll makes hover tooltips show all series rather than just the one being hovered over
+// HoverShowAll makes hover tooltips show all series rather than just the one being hovered over.
+//
+// Only supports `PanelTypeGraph`.
 func (panelOptionsLibrary) HoverShowAll() ObservablePanelOption {
-	return func(_ Observable, panel *sdk.GraphPanel) {
-		panel.Tooltip.Shared = true
+	return func(_ Observable, panel *sdk.Panel) {
+		panel.GraphPanel.Tooltip.Shared = true
 	}
 }
 
 // HoverSort sorts the series either "ascending", "descending", or "none".
 // Default is "none".
+//
+// Only supports `PanelTypeGraph`.
 func (panelOptionsLibrary) HoverSort(order string) ObservablePanelOption {
-	return func(_ Observable, panel *sdk.GraphPanel) {
+	return func(_ Observable, panel *sdk.Panel) {
 		switch order {
 		case "ascending":
-			panel.Tooltip.Sort = 1
+			panel.GraphPanel.Tooltip.Sort = 1
 		case "descending":
-			panel.Tooltip.Sort = 2
+			panel.GraphPanel.Tooltip.Sort = 2
 		default:
-			panel.Tooltip.Sort = 0
+			panel.GraphPanel.Tooltip.Sort = 0
 		}
 	}
 }
 
 // Fill sets the fill opacity for all series on the panel.
 // Set to 0 to disable fill.
+//
+// Only supports `PanelTypeGraph`.
 func (panelOptionsLibrary) Fill(fill int) ObservablePanelOption {
-	return func(_ Observable, panel *sdk.GraphPanel) {
-		panel.Fill = fill
+	return func(o Observable, panel *sdk.Panel) {
+		panel.GraphPanel.Fill = fill
 	}
 }
 
-// NoLegend disables the legend on the panel
+// NoLegend disables the legend on the panel.
 func (panelOptionsLibrary) NoLegend() ObservablePanelOption {
-	return func(_ Observable, panel *sdk.GraphPanel) {
-		panel.Legend.Show = false
+	return func(o Observable, panel *sdk.Panel) {
+		switch o.Panel.panelType {
+		case PanelTypeGraph:
+			panel.GraphPanel.Legend.Show = false
+		case PanelTypeHeatmap:
+			panel.HeatmapPanel.Legend.Show = false
+		}
+	}
+}
+
+// ZeroIfNoData adjusts this observable's query such that "no data" will render as "0".
+// This is useful if your observable tracks error rates, which might show "no data" if
+// all is well and there are no errors.
+//
+// This is different from Grafana's "null as zero", since "no data" is not "null".
+func (panelOptionsLibrary) ZeroIfNoData() ObservablePanelOption {
+	orZero := " OR on() vector(0)"
+	return func(o Observable, p *sdk.Panel) {
+		switch o.Panel.panelType {
+		case PanelTypeGraph:
+			p.GraphPanel.Targets[0].Expr += orZero
+		case PanelTypeHeatmap:
+			p.HeatmapPanel.Targets[0].Expr += orZero
+		}
 	}
 }

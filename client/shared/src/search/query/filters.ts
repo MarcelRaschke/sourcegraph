@@ -2,6 +2,7 @@ import { Omit } from 'utility-types'
 
 import { SearchSuggestion } from '../suggestions'
 
+import { languageCompletion } from './languageFilter'
 import { predicateCompletion } from './predicates'
 import { selectorCompletion } from './selectFilter'
 import { Filter, Literal } from './token'
@@ -18,7 +19,6 @@ export enum FilterType {
     count = 'count',
     file = 'file',
     fork = 'fork',
-    index = 'index',
     lang = 'lang',
     message = 'message',
     patterntype = 'patterntype',
@@ -29,7 +29,6 @@ export enum FilterType {
     // eslint-disable-next-line unicorn/prevent-abbreviations
     rev = 'rev',
     select = 'select',
-    stable = 'stable',
     timeout = 'timeout',
     type = 'type',
     visibility = 'visibility',
@@ -49,6 +48,21 @@ export enum AliasedFilterType {
     until = 'before',
 }
 /* eslint-enable unicorn/prevent-abbreviations */
+
+export const ALIASES: Record<string, string> = {
+    r: 'repo',
+    g: 'repogroup',
+    f: 'file',
+    l: 'lang',
+    language: 'language',
+    since: 'after',
+    until: 'before',
+    m: 'message',
+    msg: 'message',
+    revision: 'rev',
+}
+
+export const resolveFieldAlias = (field: string): string => ALIASES[field] || field
 
 export const isFilterType = (filter: string): filter is FilterType => filter in FilterType
 export const isAliasedFilterType = (filter: string): boolean => filter in AliasedFilterType
@@ -125,7 +139,7 @@ export interface Completion {
 interface BaseFilterDefinition {
     alias?: string
     description: string
-    discreteValues?: (value: Literal | undefined) => Completion[]
+    discreteValues?: (value: Literal | undefined, isSourcegraphDotCom?: boolean) => Completion[]
     suggestions?: SearchSuggestion['__typename']
     default?: string
     /** Whether the filter may only be used 0 or 1 times in a query. */
@@ -139,34 +153,31 @@ interface NegatableFilterDefinition extends Omit<BaseFilterDefinition, 'descript
 
 export type FilterDefinition = BaseFilterDefinition | NegatableFilterDefinition
 
-export const LANGUAGES: string[] = [
-    'c',
-    'cpp',
-    'csharp',
-    'css',
-    'go',
-    'graphql',
-    'haskell',
-    'html',
-    'java',
-    'javascript',
-    'json',
-    'lua',
-    'markdown',
-    'php',
-    'powershell',
-    'python',
-    'r',
-    'ruby',
-    'rust',
-    'sass',
-    'swift',
-    'typescript',
+const SOURCEGRAPH_DOT_COM_REPO_COMPLETION: Completion[] = [
+    {
+        label: 'Search a GitHub organization',
+        // eslint-disable-next-line no-template-curly-in-string
+        insertText: '^github\\.com/${1:ORGANIZATION}/.*',
+        asSnippet: true,
+    },
+    {
+        label: 'Search a single GitHub repository',
+        // eslint-disable-next-line no-template-curly-in-string
+        insertText: '^github\\.com/${1:ORGANIZATION}/${2:REPO-NAME}$',
+        asSnippet: true,
+    },
+    {
+        label: 'Search for repositories with fuzzy string search',
+        // eslint-disable-next-line no-template-curly-in-string
+        insertText: '${1:STRING}',
+        asSnippet: true,
+    },
 ]
 
 export const FILTERS: Record<NegatableFilter, NegatableFilterDefinition> &
     Record<Exclude<FilterType, NegatableFilter>, BaseFilterDefinition> = {
     [FilterType.after]: {
+        alias: 'since',
         description: 'Commits made after a certain date',
     },
     [FilterType.archived]: {
@@ -178,6 +189,7 @@ export const FILTERS: Record<NegatableFilter, NegatableFilterDefinition> &
         description: negated => `${negated ? 'Exclude' : 'Include only'} commits or diffs authored by a user.`,
     },
     [FilterType.before]: {
+        alias: 'unitl',
         description: 'Commits made before a certain date',
     },
     [FilterType.case]: {
@@ -219,17 +231,14 @@ export const FILTERS: Record<NegatableFilter, NegatableFilterDefinition> &
         description: 'Include results from forked repositories.',
         singular: true,
     },
-    [FilterType.index]: {
-        discreteValues: () => ['yes', 'no', 'only'].map(value => ({ label: value })),
-        description: 'Include results from indexed repositories',
-        singular: true,
-    },
     [FilterType.lang]: {
-        discreteValues: () => LANGUAGES.map(value => ({ label: value })),
+        alias: 'l',
+        discreteValues: value => languageCompletion(value).map(toCompletionItem),
         negatable: true,
         description: negated => `${negated ? 'Exclude' : 'Include only'} results from the given language`,
     },
     [FilterType.message]: {
+        alias: 'm',
         negatable: true,
         description: negated =>
             `${negated ? 'Exclude' : 'Include only'} Commits with messages matching a certain string`,
@@ -242,12 +251,16 @@ export const FILTERS: Record<NegatableFilter, NegatableFilterDefinition> &
     [FilterType.repo]: {
         alias: 'r',
         negatable: true,
-        discreteValues: () => predicateCompletion('repo'),
+        discreteValues: (_value, isSourcegraphDotCom) => [
+            ...(isSourcegraphDotCom === true ? SOURCEGRAPH_DOT_COM_REPO_COMPLETION : []),
+            ...predicateCompletion('repo'),
+        ],
         description: negated =>
             `${negated ? 'Exclude' : 'Include only'} results from repositories matching the given search pattern.`,
         suggestions: 'Repository',
     },
     [FilterType.repogroup]: {
+        alias: 'g',
         description: 'group-name (include results from the named group)',
         singular: true,
         suggestions: 'RepoGroup',
@@ -262,18 +275,13 @@ export const FILTERS: Record<NegatableFilter, NegatableFilterDefinition> &
             `${negated ? 'Exclude' : 'Include only'} results from repos that contain a matching file`,
     },
     [FilterType.rev]: {
+        alias: 'rev',
         description: 'Search a revision (branch, commit hash, or tag) instead of the default branch.',
         singular: true,
     },
     [FilterType.select]: {
         discreteValues: value => selectorCompletion(value).map(value => ({ label: value })),
         description: 'Selects the kind of result to display.',
-        singular: true,
-    },
-    [FilterType.stable]: {
-        discreteValues: () => ['yes', 'no'].map(value => ({ label: value })),
-        default: 'no',
-        description: 'Forces search to return a stable result ordering (currently limited to file content matches).',
         singular: true,
     },
     [FilterType.timeout]: {
@@ -395,6 +403,12 @@ export const validateFilter = (
         // account for finite discrete values and exemption of checks.
         return { valid: true }
     }
+    if (typeAndDefinition.type === FilterType.lang) {
+        // Lang filter is exempt because our discrete completion values are only a subset of all valid
+        // language values, which are captured by a Go library. The backend takes care of returning an
+        // alert for invalid values.
+        return { valid: true }
+    }
     const { definition } = typeAndDefinition
     if (definition.discreteValues && (!value || !isValidDiscreteValue(definition, value, value.value))) {
         return {
@@ -441,4 +455,16 @@ export const escapeSpaces = (value: string): string => {
         }
     }
     return escaped.join('')
+}
+
+/**
+ * Helper function to convert a string to a completion item. It quotes the
+ * string as necessary.
+ */
+function toCompletionItem(value: string): Completion {
+    const item: Completion = { label: value }
+    if (/\s/.test(value)) {
+        item.insertText = `"${value}"`
+    }
+    return item
 }

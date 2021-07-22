@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/inconshreveable/log15"
-	"github.com/pkg/errors"
 
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/bitbucketserver"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/github"
@@ -77,6 +77,8 @@ const (
 	ChangesetEventKindGitLabUnapproved           ChangesetEventKind = "gitlab:unapproved"
 	ChangesetEventKindGitLabMarkWorkInProgress   ChangesetEventKind = "gitlab:mark_wip"
 	ChangesetEventKindGitLabUnmarkWorkInProgress ChangesetEventKind = "gitlab:unmark_wip"
+
+	ChangesetEventKindInvalid ChangesetEventKind = "invalid"
 )
 
 // A ChangesetEvent is an event that happened in the lifetime

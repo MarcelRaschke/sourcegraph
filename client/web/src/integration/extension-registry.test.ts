@@ -154,6 +154,7 @@ describe('Extension Registry', () => {
                             },
                             settingsURL: '/site-admin/global-settings',
                             viewerCanAdminister: true,
+                            allowSiteSettingsEdits: true,
                         },
                         {
                             __typename: 'User',
@@ -171,12 +172,31 @@ describe('Extension Registry', () => {
                     final: JSON.stringify({}),
                 },
             }),
+            CurrentAuthState: () => ({
+                currentUser: {
+                    __typename: 'User',
+                    id: 'TestGQLUserID',
+                    databaseID: 1,
+                    username: 'testusername',
+                    avatarURL: null,
+                    email: 'test@test.com',
+                    displayName: 'test',
+                    siteAdmin: true,
+                    tags: [],
+                    url: '/users/test',
+                    settingsURL: '/users/test/settings',
+                    organizations: { nodes: [] },
+                    session: { canSignOut: true },
+                    viewerCanAdminister: true,
+                },
+            }),
             RegistryExtensions: () => ({
                 extensionRegistry: {
                     extensions: {
                         error: null,
                         nodes: registryExtensionNodes,
                     },
+                    featuredExtensions: null,
                 },
             }),
             Extensions: () => ({
@@ -211,23 +231,6 @@ describe('Extension Registry', () => {
     })
 
     describe('filtering by category', () => {
-        it('does not show language extensions until user clicks show more', async () => {
-            overrideGraphQLExtensionRegistry({ enabled: false })
-            await driver.page.goto(driver.sourcegraphBaseUrl + '/extensions')
-
-            //  wait for initial set of extensions
-            await driver.page.waitForSelector('[data-test="extension-toggle-sqs/word-count"]')
-            assert(
-                !(await driver.page.$('[data-test="extension-toggle-sourcegraph/typescript"]')),
-                'Expected language extensions to not be displayed by default'
-            )
-            await driver.findElementWithText('Show more extensions', { action: 'click' })
-            assert(
-                await driver.page.$('[data-test="extension-toggle-sourcegraph/typescript"]'),
-                "Expected langauge extensions to be displayed after clicking 'Show more extensions'"
-            )
-        })
-
         it('only shows extensions from the selected categories', async () => {
             overrideGraphQLExtensionRegistry({ enabled: false })
             await driver.page.goto(driver.sourcegraphBaseUrl + '/extensions')
@@ -244,6 +247,8 @@ describe('Extension Registry', () => {
             )
             // Toggle programming language extension category
             await driver.page.click('[data-test-extension-category="Programming languages"')
+            // Wait for the category header to change
+            await driver.page.waitForSelector('[data-test-extension-category-header="Programming languages"]')
             assert(
                 !(await driver.page.$('[data-test="extension-toggle-sqs/word-count"]')),
                 "Expected non-language extensions to not be displayed when only 'Programming languages' are toggled"
@@ -270,7 +275,11 @@ describe('Extension Registry', () => {
                 })
             }, 'RegistryExtensions')
 
-            assert.deepStrictEqual(request, { query: 'sqs', prioritizeExtensionIDs: ['sqs/word-count'] })
+            assert.deepStrictEqual(request, {
+                getFeatured: false,
+                query: 'sqs',
+                prioritizeExtensionIDs: [],
+            })
         })
     })
 

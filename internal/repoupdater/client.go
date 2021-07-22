@@ -6,13 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 
+	"github.com/cockroachdb/errors"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go/ext"
-	"github.com/pkg/errors"
 
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/env"
@@ -65,7 +64,7 @@ func (c *Client) RepoUpdateSchedulerInfo(ctx context.Context, args protocol.Repo
 
 	if resp.StatusCode != http.StatusOK {
 		stack := fmt.Sprintf("RepoScheduleInfo: %+v", args)
-		return nil, errors.Wrap(fmt.Errorf("http status %d", resp.StatusCode), stack)
+		return nil, errors.Wrap(errors.Errorf("http status %d", resp.StatusCode), stack)
 	}
 	defer resp.Body.Close()
 	err = json.NewDecoder(resp.Body).Decode(&result)
@@ -104,7 +103,7 @@ func (c *Client) RepoLookup(ctx context.Context, args protocol.RepoLookupArgs) (
 
 	if resp.StatusCode != http.StatusOK {
 		// best-effort inclusion of body in error message
-		body, _ := ioutil.ReadAll(io.LimitReader(resp.Body, 200))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 200))
 		return nil, errors.Errorf("RepoLookup for %+v failed with http status %d: %s", args, resp.StatusCode, string(body))
 	}
 
@@ -151,19 +150,31 @@ func (c *Client) EnqueueRepoUpdate(ctx context.Context, repo api.RepoName) (*pro
 	}
 	defer resp.Body.Close()
 
-	bs, err := ioutil.ReadAll(resp.Body)
+	bs, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read response body")
 	}
 
 	var res protocol.RepoUpdateResponse
-	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, &repoNotFoundError{string(repo), string(bs)}
+	} else if resp.StatusCode < 200 || resp.StatusCode >= 400 {
 		return nil, errors.New(string(bs))
 	} else if err = json.Unmarshal(bs, &res); err != nil {
 		return nil, err
 	}
 
 	return &res, nil
+}
+
+type repoNotFoundError struct {
+	repo         string
+	responseBody string
+}
+
+func (repoNotFoundError) NotFound() bool { return true }
+func (e *repoNotFoundError) Error() string {
+	return fmt.Sprintf("repo %v not found with response: %v", e.repo, e.responseBody)
 }
 
 // MockEnqueueChangesetSync mocks (*Client).EnqueueChangesetSync for tests.
@@ -181,7 +192,7 @@ func (c *Client) EnqueueChangesetSync(ctx context.Context, ids []int64) error {
 	}
 	defer resp.Body.Close()
 
-	bs, err := ioutil.ReadAll(resp.Body)
+	bs, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return errors.Wrap(err, "failed to read response body")
 	}
@@ -206,7 +217,7 @@ func (c *Client) SchedulePermsSync(ctx context.Context, args protocol.PermsSyncR
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	bs, err := ioutil.ReadAll(resp.Body)
+	bs, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return errors.Wrap(err, "read response body")
 	}
@@ -233,7 +244,7 @@ func (c *Client) SyncExternalService(ctx context.Context, svc api.ExternalServic
 	}
 	defer resp.Body.Close()
 
-	bs, err := ioutil.ReadAll(resp.Body)
+	bs, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read response body")
 	}
@@ -267,7 +278,7 @@ func (c *Client) RepoExternalServices(ctx context.Context, id api.RepoID) ([]api
 	}
 	defer resp.Body.Close()
 
-	bs, err := ioutil.ReadAll(resp.Body)
+	bs, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read response body")
 	}
@@ -280,35 +291,6 @@ func (c *Client) RepoExternalServices(ctx context.Context, id api.RepoID) ([]api
 	}
 
 	return res.ExternalServices, nil
-}
-
-// ExcludeRepo adds the repository with the given id to all of the
-// external services exclude lists that match its kind.
-func (c *Client) ExcludeRepo(ctx context.Context, id api.RepoID) (*protocol.ExcludeRepoResponse, error) {
-	if id == 0 {
-		return &protocol.ExcludeRepoResponse{}, nil
-	}
-
-	req := protocol.ExcludeRepoRequest{ID: id}
-	resp, err := c.httpPost(ctx, "exclude-repo", &req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	bs, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read response body")
-	}
-
-	var res protocol.ExcludeRepoResponse
-	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		return nil, errors.New(string(bs))
-	} else if err = json.Unmarshal(bs, &res); err != nil {
-		return nil, err
-	}
-
-	return &res, nil
 }
 
 func (c *Client) httpPost(ctx context.Context, method string, payload interface{}) (resp *http.Response, err error) {

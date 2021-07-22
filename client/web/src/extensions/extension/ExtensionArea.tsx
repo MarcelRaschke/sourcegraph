@@ -216,18 +216,12 @@ export class ExtensionArea extends React.Component<ExtensionAreaProps> {
 
         return (
             <div className="registry-extension-area">
-                <ExtensionAreaHeader
-                    {...this.props}
-                    {...context}
-                    navItems={this.props.extensionAreaHeaderNavItems}
-                    className="border-bottom"
-                />
+                <ExtensionAreaHeader {...this.props} {...context} navItems={this.props.extensionAreaHeaderNavItems} />
                 <div className="container pt-3">
                     <ErrorBoundary location={this.props.location}>
                         <React.Suspense fallback={<LoadingSpinner className="icon-inline m-2" />}>
                             <Switch>
                                 {this.props.routes.map(
-                                    /* eslint-disable react/jsx-no-bind */
                                     ({ path, render, exact, condition = () => true }) =>
                                         condition(context) && (
                                             <Route
@@ -239,7 +233,6 @@ export class ExtensionArea extends React.Component<ExtensionAreaProps> {
                                                 }
                                             />
                                         )
-                                    /* eslint-enable react/jsx-no-bind */
                                 )}
                                 <Route key="hardcoded-key" component={NotFoundPage} />
                             </Switch>

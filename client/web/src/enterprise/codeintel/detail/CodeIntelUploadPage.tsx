@@ -10,14 +10,15 @@ import { LSIFUploadState } from '@sourcegraph/shared/src/graphql-operations'
 import { TelemetryProps } from '@sourcegraph/shared/src/telemetry/telemetryService'
 import { asError, ErrorLike, isErrorLike } from '@sourcegraph/shared/src/util/errors'
 import { useObservable } from '@sourcegraph/shared/src/util/useObservable'
+import { PageHeader } from '@sourcegraph/wildcard'
 
 import { ErrorAlert } from '../../../components/alerts'
-import { PageHeader } from '../../../components/PageHeader'
 import { PageTitle } from '../../../components/PageTitle'
 import { LsifUploadFields } from '../../../graphql-operations'
 import { CodeIntelStateBanner } from '../shared/CodeIntelStateBanner'
 
 import { deleteLsifUpload, fetchLsifUpload as defaultFetchUpload } from './backend'
+import { CodeIntelAssociatedIndex } from './CodeIntelAssociatedIndex'
 import { CodeIntelUploadMeta } from './CodeIntelUploadMeta'
 import { CodeIntelUploadTimeline } from './CodeIntelUploadTimeline'
 
@@ -90,7 +91,7 @@ export const CodeIntelUploadPage: FunctionComponent<CodeIntelUploadPageProps> = 
     ) : isErrorLike(deletionOrError) ? (
         <ErrorAlert prefix="Error deleting LSIF upload" error={deletionOrError} />
     ) : (
-        <div className="site-admin-lsif-upload-page w-100 web-content">
+        <div className="site-admin-lsif-upload-page w-100">
             <PageTitle title="Code intelligence - uploads" />
             {isErrorLike(uploadOrError) ? (
                 <ErrorAlert prefix="Error loading LSIF upload" error={uploadOrError} />
@@ -122,10 +123,15 @@ export const CodeIntelUploadPage: FunctionComponent<CodeIntelUploadPageProps> = 
                             },
                         ]}
                         actions={
-                            <CodeIntelDeleteUpload deleteUpload={deleteUpload} deletionOrError={deletionOrError} />
+                            <CodeIntelDeleteUpload
+                                state={uploadOrError.state}
+                                deleteUpload={deleteUpload}
+                                deletionOrError={deletionOrError}
+                            />
                         }
                         className="mb-3"
                     />
+
                     <CodeIntelStateBanner
                         state={uploadOrError.state}
                         placeInQueue={uploadOrError.placeInQueue}
@@ -140,11 +146,10 @@ export const CodeIntelUploadPage: FunctionComponent<CodeIntelUploadPageProps> = 
                             tip of the default branch and are targets of cross-repository find reference operations.
                         </div>
                     )}
-                    <div className="card mb-3">
-                        <div className="card-body">
-                            <CodeIntelUploadMeta node={uploadOrError} now={now} />
-                        </div>
-                    </div>
+                    <CodeIntelUploadMeta node={uploadOrError} now={now} />
+                    <CodeIntelAssociatedIndex node={uploadOrError} now={now} />
+
+                    <h3>Timeline</h3>
                     <CodeIntelUploadTimeline now={now} upload={uploadOrError} className="mb-3" />
                 </>
             )}
@@ -159,19 +164,31 @@ function shouldReload(upload: LsifUploadFields | ErrorLike | null | undefined): 
 }
 
 interface CodeIntelDeleteUploadProps {
+    state: LSIFUploadState
     deleteUpload: () => Promise<void>
     deletionOrError?: 'loading' | 'deleted' | ErrorLike
 }
 
-const CodeIntelDeleteUpload: FunctionComponent<CodeIntelDeleteUploadProps> = ({ deleteUpload, deletionOrError }) => (
-    <button
-        type="button"
-        className="btn btn-outline-danger"
-        onClick={deleteUpload}
-        disabled={deletionOrError === 'loading'}
-        aria-describedby="upload-delete-button-help"
-        data-tooltip="Deleting this upload makes it immediately unavailable to answer code intelligence queries."
-    >
-        <DeleteIcon className="icon-inline" /> Delete upload
-    </button>
-)
+const CodeIntelDeleteUpload: FunctionComponent<CodeIntelDeleteUploadProps> = ({
+    state,
+    deleteUpload,
+    deletionOrError,
+}) =>
+    state === LSIFUploadState.DELETING ? (
+        <></>
+    ) : (
+        <button
+            type="button"
+            className="btn btn-outline-danger"
+            onClick={deleteUpload}
+            disabled={deletionOrError === 'loading'}
+            aria-describedby="upload-delete-button-help"
+            data-tooltip={
+                state === LSIFUploadState.COMPLETED
+                    ? 'Deleting this upload will make it unavailable to answer code intelligence queries the next time the repository commit graph is refreshed.'
+                    : 'Delete this upload immediately'
+            }
+        >
+            <DeleteIcon className="icon-inline" /> Delete upload
+        </button>
+    )

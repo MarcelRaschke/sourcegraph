@@ -1,7 +1,9 @@
-import * as React from 'react'
+import classNames from 'classnames'
+import React from 'react'
 import { Link, NavLink, RouteComponentProps } from 'react-router-dom'
 
-import { PageHeader } from '../../components/PageHeader'
+import { PageHeader } from '@sourcegraph/wildcard'
+
 import { NavItemWithIconDescriptor } from '../../util/contributions'
 import { OrgAvatar } from '../OrgAvatar'
 
@@ -27,7 +29,7 @@ export const OrgHeader: React.FunctionComponent<Props> = ({
     className = '',
     isSourcegraphDotCom,
 }) => (
-    <div className={`org-header ${className}`}>
+    <div className={classNames('org-header', className)}>
         <div className="container">
             {org && (
                 <>
@@ -51,7 +53,7 @@ export const OrgHeader: React.FunctionComponent<Props> = ({
                         className="mb-3"
                     />
                     <div className="d-flex align-items-end justify-content-between">
-                        <ul className="nav nav-tabs border-bottom-0">
+                        <ul className="nav nav-tabs w-100">
                             {navItems.map(
                                 ({ to, label, exact, icon: Icon, condition = () => true }) =>
                                     condition({ org, isSourcegraphDotCom }) && (
@@ -62,7 +64,12 @@ export const OrgHeader: React.FunctionComponent<Props> = ({
                                                 activeClassName="active"
                                                 exact={exact}
                                             >
-                                                {Icon && <Icon className="icon-inline" />} {label}
+                                                <span>
+                                                    {Icon && <Icon className="icon-inline" />}{' '}
+                                                    <span className="text-content" data-tab-content={label}>
+                                                        {label}
+                                                    </span>
+                                                </span>
                                             </NavLink>
                                         </li>
                                     )

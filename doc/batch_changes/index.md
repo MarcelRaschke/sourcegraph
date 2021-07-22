@@ -87,10 +87,12 @@ Create a batch change by specifying a search query to get a list of repositories
 - [Closing or deleting a batch change](how-tos/closing_or_deleting_a_batch_change.md)
 - [Site admin configuration for batch changes](how-tos/site_admin_configuration.md)
 - [Configuring credentials for Batch Changes](how-tos/configuring_credentials.md)
-- <span class="badge badge-experimental">Experimental</span> [Creating multiple changesets in large repositories](how-tos/creating_multiple_changesets_in_large_repositories.md)
 - [Handling errored changesets](how-tos/handling_errored_changesets.md)
-- [Creating changesets per project in monorepos](how-tos/creating_changesets_per_project_in_monorepos.md)
 - [Opting out of batch changes](how-tos/opting_out_of_batch_changes.md)
+- [Bulk operations on changesets](how-tos/bulk_operations_on_changesets.md)
+- Batch changes in monorepos
+  - [Creating changesets per project in monorepos](how-tos/creating_changesets_per_project_in_monorepos.md)
+  - <span class="badge badge-experimental">Experimental</span> [Creating multiple changesets in large repositories](how-tos/creating_multiple_changesets_in_large_repositories.md)
 
 ## Tutorials
 
@@ -98,11 +100,14 @@ Create a batch change by specifying a search query to get a list of repositories
 - [Updating Go import statements using Comby](tutorials/updating_go_import_statements.md)
 - [Update base images in Dockerfiles](tutorials/update_base_images_in_dockerfiles.md)
 - [Search and replace specific terms](tutorials/search_and_replace_specific_terms.md)
+- [Examples repository](https://github.com/sourcegraph/batch-change-examples)
 
 ## References
 
 - [Requirements](references/requirements.md)
 - [Batch spec YAML reference](references/batch_spec_yaml_reference.md)
 - [Batch spec templating](references/batch_spec_templating.md)
+- [Batch spec cheat sheet](references/batch_spec_cheat_sheet.md)
 - [Troubleshooting](references/troubleshooting.md)
+- [FAQ](references/faq.md)
 - [CLI](../cli/references/batch/index.md)

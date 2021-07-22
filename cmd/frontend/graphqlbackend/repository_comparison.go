@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/cockroachdb/errors"
+	"github.com/inconshreveable/log15"
 	"github.com/sourcegraph/go-diff/diff"
 
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend/graphqlutil"
@@ -522,11 +524,51 @@ func (r *DiffHunk) Highlight(ctx context.Context, args *HighlightArgs) (*highlig
 	if err != nil {
 		return nil, err
 	}
+
 	hunkLines := strings.Split(string(r.hunk.Body), "\n")
+
 	// Remove final empty line on files that end with a newline, as most code hosts do.
 	if hunkLines[len(hunkLines)-1] == "" {
 		hunkLines = hunkLines[:len(hunkLines)-1]
 	}
+
+	// Trim a trailing empty line to match the behavior of highlight.Code
+	// If this isn't done, it causes the length of highlightedHead to be
+	// different than the length of hunkLines, which leads to out-of-bounds
+	// errors like https://github.com/sourcegraph/sourcegraph/issues/20405
+	if hunkLines[len(hunkLines)-1] == "+" {
+		hunkLines = hunkLines[:len(hunkLines)-1]
+	}
+
+	// Now do the same thing for trailing "-" lines. But only if they're not
+	// followed by an "unchanged" line.
+	var lastMinus = -1
+	for i, hunkLine := range hunkLines {
+		if hunkLine == " " {
+			lastMinus = -1
+		} else if hunkLine == "-" {
+			lastMinus = i
+		}
+	}
+	// Empty "-" line that's not followed by an unchanged line, so cut it out
+	if lastMinus > -1 {
+		hunkLines = append(hunkLines[:lastMinus], hunkLines[lastMinus+1:]...)
+	}
+
+	// Even after all the logic above, we were still hitting out-of-bounds panics:
+	// https://github.com/sourcegraph/sourcegraph/issues/21054
+	// Ultimately, we'll need a cleaner solution than this, but for now, just
+	// returning an empty line div when one was trimmed unexpectedly will at least
+	// protect from panics.
+	// Tracking issue: https://github.com/sourcegraph/sourcegraph/issues/20704
+	safeIndex := func(lines []template.HTML, target int32) string {
+		if len(lines) > int(target) {
+			return string(lines[target])
+		}
+		log15.Warn("returned default value for out of bounds index on highlighted code")
+		return `<div>\n</div>`
+	}
+
 	highlightedDiffHunkLineResolvers := make([]*highlightedDiffHunkLineResolver, len(hunkLines))
 	// Lines in highlightedBase and highlightedHead are 0-indexed.
 	baseLine := r.hunk.OrigStartLine - 1
@@ -535,19 +577,19 @@ func (r *DiffHunk) Highlight(ctx context.Context, args *HighlightArgs) (*highlig
 		highlightedDiffHunkLineResolver := highlightedDiffHunkLineResolver{}
 		if hunkLine[0] == ' ' {
 			highlightedDiffHunkLineResolver.kind = "UNCHANGED"
-			highlightedDiffHunkLineResolver.html = string(highlightedBase[baseLine])
+			highlightedDiffHunkLineResolver.html = safeIndex(highlightedBase, baseLine)
 			baseLine++
 			headLine++
 		} else if hunkLine[0] == '+' {
 			highlightedDiffHunkLineResolver.kind = "ADDED"
-			highlightedDiffHunkLineResolver.html = string(highlightedHead[headLine])
+			highlightedDiffHunkLineResolver.html = safeIndex(highlightedHead, headLine)
 			headLine++
 		} else if hunkLine[0] == '-' {
 			highlightedDiffHunkLineResolver.kind = "DELETED"
-			highlightedDiffHunkLineResolver.html = string(highlightedBase[baseLine])
+			highlightedDiffHunkLineResolver.html = safeIndex(highlightedBase, baseLine)
 			baseLine++
 		} else {
-			return nil, fmt.Errorf("expected patch lines to start with ' ', '-', '+', but found %q", hunkLine[0])
+			return nil, errors.Errorf("expected patch lines to start with ' ', '-', '+', but found %q", hunkLine[0])
 		}
 
 		highlightedDiffHunkLineResolvers[i] = &highlightedDiffHunkLineResolver

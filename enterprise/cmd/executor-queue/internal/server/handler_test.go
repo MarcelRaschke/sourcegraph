@@ -24,8 +24,8 @@ func TestDequeue(t *testing.T) {
 	}
 
 	store := workerstoremocks.NewMockStore()
-	store.DequeueWithIndependentTransactionContextFunc.SetDefaultReturn(testRecord{ID: 42, Payload: "secret"}, store, true, nil)
-	recordTransformer := func(record workerutil.Record) (apiclient.Job, error) {
+	store.DequeueFunc.SetDefaultReturn(testRecord{ID: 42, Payload: "secret"}, true, nil)
+	recordTransformer := func(ctx context.Context, record workerutil.Record) (apiclient.Job, error) {
 		if tr, ok := record.(testRecord); !ok {
 			t.Errorf("mismatched record type.")
 		} else if tr.Payload != "secret" {
@@ -39,11 +39,10 @@ func TestDequeue(t *testing.T) {
 		QueueOptions: map[string]QueueOptions{
 			"test_queue": {Store: store, RecordTransformer: recordTransformer},
 		},
-		MaximumNumTransactions: 10,
 	}
 	handler := newHandler(options, glock.NewMockClock())
 
-	job, dequeued, err := handler.dequeue(context.Background(), "test_queue", "deadbeef")
+	job, dequeued, err := handler.dequeue(context.Background(), "test_queue", "deadbeef", "test")
 	if err != nil {
 		t.Fatalf("unexpected error dequeueing job: %s", err)
 	}
@@ -63,11 +62,10 @@ func TestDequeueNoRecord(t *testing.T) {
 		QueueOptions: map[string]QueueOptions{
 			"test_queue": {Store: workerstoremocks.NewMockStore()},
 		},
-		MaximumNumTransactions: 10,
 	}
 	handler := newHandler(options, glock.NewMockClock())
 
-	_, dequeued, err := handler.dequeue(context.Background(), "test_queue", "deadbeef")
+	_, dequeued, err := handler.dequeue(context.Background(), "test_queue", "deadbeef", "test")
 	if err != nil {
 		t.Fatalf("unexpected error dequeueing job: %s", err)
 	}
@@ -80,77 +78,26 @@ func TestDequeueUnknownQueue(t *testing.T) {
 	options := Options{}
 	handler := newHandler(options, glock.NewMockClock())
 
-	if _, _, err := handler.dequeue(context.Background(), "test_queue", "deadbeef"); err != ErrUnknownQueue {
+	if _, _, err := handler.dequeue(context.Background(), "test_queue", "deadbeef", "test"); err != ErrUnknownQueue {
 		t.Fatalf("unexpected error. want=%q have=%q", ErrUnknownQueue, err)
-	}
-}
-
-func TestDequeueMaxTransactions(t *testing.T) {
-	store := workerstoremocks.NewMockStore()
-	store.DequeueWithIndependentTransactionContextFunc.PushReturn(testRecord{ID: 41}, store, true, nil)
-	store.DequeueWithIndependentTransactionContextFunc.PushReturn(testRecord{ID: 42}, store, true, nil)
-	store.DequeueWithIndependentTransactionContextFunc.PushReturn(testRecord{ID: 43}, store, true, nil)
-	recordTransformer := func(record workerutil.Record) (apiclient.Job, error) { return apiclient.Job{}, nil }
-
-	options := Options{
-		QueueOptions: map[string]QueueOptions{
-			"test_queue": {Store: store, RecordTransformer: recordTransformer},
-		},
-		MaximumNumTransactions: 2,
-	}
-	handler := newHandler(options, glock.NewMockClock())
-
-	_, dequeued1, err := handler.dequeue(context.Background(), "test_queue", "deadbeef")
-	if err != nil {
-		t.Fatalf("unexpected error dequeueing job: %s", err)
-	}
-	if !dequeued1 {
-		t.Fatalf("expected job to be dequeued")
-	}
-
-	_, dequeued2, err := handler.dequeue(context.Background(), "test_queue", "deadbeef")
-	if err != nil {
-		t.Fatalf("unexpected error dequeueing job: %s", err)
-	}
-	if !dequeued2 {
-		t.Fatalf("expected a second job to be dequeued")
-	}
-
-	_, dequeued3, err := handler.dequeue(context.Background(), "test_queue", "deadbeef")
-	if err != nil {
-		t.Fatalf("unexpected error dequeueing job: %s", err)
-	}
-	if dequeued3 {
-		t.Fatalf("did not expect a third job to be dequeued")
-	}
-
-	if err := handler.markComplete(context.Background(), "test_queue", "deadbeef", 42); err != nil {
-		t.Fatalf("unexpected error completing job: %s", err)
-	}
-
-	_, dequeued4, err := handler.dequeue(context.Background(), "test_queue", "deadbeef")
-	if err != nil {
-		t.Fatalf("unexpected error dequeueing job: %s", err)
-	}
-	if !dequeued4 {
-		t.Fatalf("expected a third job to be dequeued after a release")
 	}
 }
 
 func TestAddExecutionLogEntry(t *testing.T) {
 	store := workerstoremocks.NewMockStore()
-	store.DequeueWithIndependentTransactionContextFunc.SetDefaultReturn(testRecord{ID: 42}, store, true, nil)
-	recordTransformer := func(record workerutil.Record) (apiclient.Job, error) { return apiclient.Job{ID: 42}, nil }
+	store.DequeueFunc.SetDefaultReturn(testRecord{ID: 42}, true, nil)
+	recordTransformer := func(ctx context.Context, record workerutil.Record) (apiclient.Job, error) {
+		return apiclient.Job{ID: 42}, nil
+	}
 
 	options := Options{
 		QueueOptions: map[string]QueueOptions{
 			"test_queue": {Store: store, RecordTransformer: recordTransformer},
 		},
-		MaximumNumTransactions: 10,
 	}
 	handler := newHandler(options, glock.NewMockClock())
 
-	job, dequeued, err := handler.dequeue(context.Background(), "test_queue", "deadbeef")
+	job, dequeued, err := handler.dequeue(context.Background(), "test_queue", "deadbeef", "test")
 	if err != nil {
 		t.Fatalf("unexpected error dequeueing job: %s", err)
 	}
@@ -210,18 +157,19 @@ func TestAddExecutionLogEntryUnknownJob(t *testing.T) {
 
 func TestMarkComplete(t *testing.T) {
 	store := workerstoremocks.NewMockStore()
-	store.DequeueWithIndependentTransactionContextFunc.SetDefaultReturn(testRecord{ID: 42}, store, true, nil)
-	recordTransformer := func(record workerutil.Record) (apiclient.Job, error) { return apiclient.Job{ID: 42}, nil }
+	store.DequeueFunc.SetDefaultReturn(testRecord{ID: 42}, true, nil)
+	recordTransformer := func(ctx context.Context, record workerutil.Record) (apiclient.Job, error) {
+		return apiclient.Job{ID: 42}, nil
+	}
 
 	options := Options{
 		QueueOptions: map[string]QueueOptions{
 			"test_queue": {Store: store, RecordTransformer: recordTransformer},
 		},
-		MaximumNumTransactions: 10,
 	}
 	handler := newHandler(options, glock.NewMockClock())
 
-	job, dequeued, err := handler.dequeue(context.Background(), "test_queue", "deadbeef")
+	job, dequeued, err := handler.dequeue(context.Background(), "test_queue", "deadbeef", "test")
 	if err != nil {
 		t.Fatalf("unexpected error dequeueing job: %s", err)
 	}
@@ -266,18 +214,19 @@ func TestMarkCompleteUnknownQueue(t *testing.T) {
 
 func TestMarkErrored(t *testing.T) {
 	store := workerstoremocks.NewMockStore()
-	store.DequeueWithIndependentTransactionContextFunc.SetDefaultReturn(testRecord{ID: 42}, store, true, nil)
-	recordTransformer := func(record workerutil.Record) (apiclient.Job, error) { return apiclient.Job{ID: 42}, nil }
+	store.DequeueFunc.SetDefaultReturn(testRecord{ID: 42}, true, nil)
+	recordTransformer := func(ctx context.Context, record workerutil.Record) (apiclient.Job, error) {
+		return apiclient.Job{ID: 42}, nil
+	}
 
 	options := Options{
 		QueueOptions: map[string]QueueOptions{
 			"test_queue": {Store: store, RecordTransformer: recordTransformer},
 		},
-		MaximumNumTransactions: 10,
 	}
 	handler := newHandler(options, glock.NewMockClock())
 
-	job, dequeued, err := handler.dequeue(context.Background(), "test_queue", "deadbeef")
+	job, dequeued, err := handler.dequeue(context.Background(), "test_queue", "deadbeef", "test")
 	if err != nil {
 		t.Fatalf("unexpected error dequeueing job: %s", err)
 	}
@@ -325,18 +274,19 @@ func TestMarkErroredUnknownQueue(t *testing.T) {
 
 func TestMarkFailed(t *testing.T) {
 	store := workerstoremocks.NewMockStore()
-	store.DequeueWithIndependentTransactionContextFunc.SetDefaultReturn(testRecord{ID: 42}, store, true, nil)
-	recordTransformer := func(record workerutil.Record) (apiclient.Job, error) { return apiclient.Job{ID: 42}, nil }
+	store.DequeueFunc.SetDefaultReturn(testRecord{ID: 42}, true, nil)
+	recordTransformer := func(ctx context.Context, record workerutil.Record) (apiclient.Job, error) {
+		return apiclient.Job{ID: 42}, nil
+	}
 
 	options := Options{
 		QueueOptions: map[string]QueueOptions{
 			"test_queue": {Store: store, RecordTransformer: recordTransformer},
 		},
-		MaximumNumTransactions: 10,
 	}
 	handler := newHandler(options, glock.NewMockClock())
 
-	job, dequeued, err := handler.dequeue(context.Background(), "test_queue", "deadbeef")
+	job, dequeued, err := handler.dequeue(context.Background(), "test_queue", "deadbeef", "test")
 	if err != nil {
 		t.Fatalf("unexpected error dequeueing job: %s", err)
 	}

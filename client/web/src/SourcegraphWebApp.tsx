@@ -1,13 +1,13 @@
 import 'focus-visible'
 
+import { ApolloProvider } from '@apollo/client'
 import { ShortcutProvider } from '@slimsag/react-shortcuts'
 import ServerIcon from 'mdi-react/ServerIcon'
 import * as React from 'react'
-import { hot } from 'react-hot-loader/root'
 import { Route } from 'react-router'
 import { BrowserRouter } from 'react-router-dom'
 import { combineLatest, from, Subscription, fromEvent, of, Subject } from 'rxjs'
-import { bufferCount, startWith, switchMap } from 'rxjs/operators'
+import { bufferCount, catchError, startWith, switchMap } from 'rxjs/operators'
 
 import { Tooltip } from '@sourcegraph/branded/src/components/tooltip/Tooltip'
 import { NotificationType } from '@sourcegraph/shared/src/api/extension/extensionHostApi'
@@ -22,11 +22,19 @@ import { Notifications } from '@sourcegraph/shared/src/notifications/Notificatio
 import { PlatformContext } from '@sourcegraph/shared/src/platform/context'
 import { FilterType } from '@sourcegraph/shared/src/search/query/filters'
 import { filterExists } from '@sourcegraph/shared/src/search/query/validate'
+import { aggregateStreamingSearch } from '@sourcegraph/shared/src/search/stream'
 import { EMPTY_SETTINGS_CASCADE, SettingsCascadeProps } from '@sourcegraph/shared/src/settings/settings'
-import { REDESIGN_CLASS_NAME, getIsRedesignEnabled } from '@sourcegraph/shared/src/util/useRedesignToggle'
+import { asError, isErrorLike } from '@sourcegraph/shared/src/util/errors'
+import {
+    REDESIGN_CLASS_NAME,
+    getIsRedesignEnabled,
+    REDESIGN_TOGGLE_KEY,
+} from '@sourcegraph/shared/src/util/useRedesignToggle'
 
 import { authenticatedUser, AuthenticatedUser } from './auth'
+import { client } from './backend/graphql'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { queryExternalServices } from './components/externalServices/backend'
 import { FeedbackText } from './components/FeedbackText'
 import { HeroPage } from './components/HeroPage'
 import { RouterLinkOrAnchor } from './components/RouterLinkOrAnchor'
@@ -34,7 +42,8 @@ import { ExtensionAreaRoute } from './extensions/extension/ExtensionArea'
 import { ExtensionAreaHeaderNavItem } from './extensions/extension/ExtensionAreaHeader'
 import { ExtensionsAreaRoute } from './extensions/ExtensionsArea'
 import { ExtensionsAreaHeaderActionButton } from './extensions/ExtensionsAreaHeader'
-import { logCodeInsightsChanges } from './insights'
+import { FeatureFlagName, fetchFeatureFlags, FlagSet } from './featureFlags/featureFlags'
+import { logInsightMetrics } from './insights'
 import { KeyboardShortcutsProps } from './keyboardShortcuts/keyboardShortcuts'
 import { Layout, LayoutProps } from './Layout'
 import { updateUserSessionStores } from './marketing/util'
@@ -49,20 +58,30 @@ import { RepoSettingsAreaRoute } from './repo/settings/RepoSettingsArea'
 import { RepoSettingsSideBarGroup } from './repo/settings/RepoSettingsSidebar'
 import { LayoutRouteProps } from './routes'
 import { VersionContext } from './schema/site.schema'
-import { resolveVersionContext, parseSearchURL, getAvailableSearchContextSpecOrDefault } from './search'
 import {
-    search,
+    resolveVersionContext,
+    parseSearchURL,
+    getAvailableSearchContextSpecOrDefault,
+    isSearchContextSpecAvailable,
+} from './search'
+import {
     fetchSavedSearches,
     fetchRecentSearches,
     fetchRecentFileViews,
     fetchAutoDefinedSearchContexts,
     fetchSearchContexts,
+    convertVersionContextToSearchContext,
+    fetchSearchContext,
+    createSearchContext,
+    updateSearchContext,
+    deleteSearchContext,
+    getUserSearchContextNamespaces,
 } from './search/backend'
 import { QueryState } from './search/helpers'
-import { aggregateStreamingSearch } from './search/stream'
 import { listUserRepositories } from './site-admin/backend'
 import { SiteAdminAreaRoute } from './site-admin/SiteAdminArea'
 import { SiteAdminSideBarGroups } from './site-admin/SiteAdminSidebar'
+import { CodeHostScopeProvider } from './site/CodeHostScopeAlerts/CodeHostScopeProvider'
 import { ThemePreference } from './theme'
 import { eventLogger } from './tracking/eventLogger'
 import { withActivation } from './tracking/withActivation'
@@ -140,11 +159,6 @@ interface SourcegraphWebAppState extends SettingsCascadeProps {
      */
     searchCaseSensitivity: boolean
 
-    /**
-     * Whether to display the copy query button.
-     */
-    copyQueryButton: boolean
-
     /*
      * The version context the instance is in. If undefined, it means no version context is selected.
      */
@@ -170,8 +184,9 @@ interface SourcegraphWebAppState extends SettingsCascadeProps {
     showSearchContextManagement: boolean
     selectedSearchContextSpec?: string
     defaultSearchContextSpec: string
-    hasUserDefinedContexts: boolean
     hasUserAddedRepositories: boolean
+    hasUserSyncedPublicRepositories: boolean
+    hasUserAddedExternalServices: boolean
 
     /**
      * Whether globbing is enabled for filters.
@@ -184,19 +199,34 @@ interface SourcegraphWebAppState extends SettingsCascadeProps {
     showMultilineSearchConsole: boolean
 
     /**
+     * Whether we show the search notebook.
+     */
+    showSearchNotebook: boolean
+
+    /**
      * Whether we show the mulitiline editor at /search/query-builder
      */
     showQueryBuilder: boolean
 
     /**
-     * Wether to enable enable contextual syntax highlighting and hovers for search queries
-     */
-    enableSmartQuery: boolean
-
-    /**
      * Whether the code monitoring feature flag is enabled.
      */
     enableCodeMonitoring: boolean
+
+    /**
+     * Whether the API docs feature flag is enabled.
+     */
+    enableAPIDocs: boolean
+
+    /**
+     * Whether the design refresh toggle is enabled.
+     */
+    designRefreshToggleEnabled: boolean
+
+    /**
+     * Evaluated feature flags for the current viewer
+     */
+    featureFlags: FlagSet
 }
 
 const notificationClassNames = {
@@ -233,11 +263,8 @@ const LayoutWithActivation = window.context.sourcegraphDotComMode ? Layout : wit
 
 /**
  * The root component.
- *
- * This is the non-hot-reload component. It is wrapped in `hot(...)` below to make it
- * hot-reloadable in development.
  */
-class ColdSourcegraphWebApp extends React.Component<SourcegraphWebAppProps, SourcegraphWebAppState> {
+export class SourcegraphWebApp extends React.Component<SourcegraphWebAppProps, SourcegraphWebAppState> {
     private readonly subscriptions = new Subscription()
     private readonly userRepositoriesUpdates = new Subject<void>()
     private readonly darkThemeMediaList = window.matchMedia('(prefers-color-scheme: dark)')
@@ -270,7 +297,6 @@ class ColdSourcegraphWebApp extends React.Component<SourcegraphWebAppProps, Sour
             parsedSearchQuery: parsedSearchURL.query || '',
             searchPatternType: urlPatternType,
             searchCaseSensitivity: urlCase,
-            copyQueryButton: false,
             versionContext: resolvedVersionContext,
             availableVersionContexts,
             previousVersionContext,
@@ -280,13 +306,20 @@ class ColdSourcegraphWebApp extends React.Component<SourcegraphWebAppProps, Sour
             showSearchContextManagement: false,
             defaultSearchContextSpec: 'global', // global is default for now, user will be able to change this at some point
             hasUserAddedRepositories: false,
-            hasUserDefinedContexts: false,
+            hasUserSyncedPublicRepositories: false,
+            hasUserAddedExternalServices: false,
             showEnterpriseHomePanels: false,
             globbing: false,
             showMultilineSearchConsole: false,
+            showSearchNotebook: false,
             showQueryBuilder: false,
-            enableSmartQuery: false,
             enableCodeMonitoring: false,
+            // Disabling linter here as otherwise the application fails to compile. Bad lint?
+            // See 7a137b201330eb2118c746f8cc5acddf63c1f039
+            // eslint-disable-next-line react/no-unused-state
+            enableAPIDocs: false,
+            designRefreshToggleEnabled: false,
+            featureFlags: new Map<FeatureFlagName, boolean>(),
         }
     }
 
@@ -301,11 +334,6 @@ class ColdSourcegraphWebApp extends React.Component<SourcegraphWebAppProps, Sour
         updateUserSessionStores()
 
         document.documentElement.classList.add('theme')
-
-        // NODE_ENV check ensures that this logic won't propagate to non-dev builds via Webpack dead code elimination
-        if (process.env.NODE_ENV === 'development' && getIsRedesignEnabled()) {
-            document.documentElement.classList.add(REDESIGN_CLASS_NAME)
-        }
 
         this.subscriptions.add(
             combineLatest([from(this.platformContext.settings), authenticatedUser.pipe(startWith(null))]).subscribe(
@@ -325,12 +353,16 @@ class ColdSourcegraphWebApp extends React.Component<SourcegraphWebAppProps, Sour
             )
         )
 
-        // Observe settings mutations for analytics
+        // Track static metrics fo code insights.
+        // Insight count, insights settings, observe settings mutations for analytics
+        // Track add delete and update events of code insights via
         this.subscriptions.add(
-            from(this.platformContext.settings)
+            combineLatest([from(this.platformContext.settings), authenticatedUser])
                 .pipe(bufferCount(2, 1))
-                .subscribe(([oldSettings, newSettings]) => {
-                    logCodeInsightsChanges(oldSettings, newSettings, eventLogger)
+                .subscribe(([[oldSettings], [newSettings, authUser]]) => {
+                    if (authUser) {
+                        logInsightMetrics(oldSettings, newSettings, authUser, eventLogger)
+                    }
                 })
         )
 
@@ -345,19 +377,24 @@ class ColdSourcegraphWebApp extends React.Component<SourcegraphWebAppProps, Sour
             combineLatest([this.userRepositoriesUpdates, authenticatedUser])
                 .pipe(
                     switchMap(([, authenticatedUser]) =>
-                        authenticatedUser ? listUserRepositories({ id: authenticatedUser.id, first: 1 }) : of(null)
-                    )
+                        authenticatedUser
+                            ? combineLatest([
+                                  listUserRepositories({ id: authenticatedUser.id, first: 1 }),
+                                  queryExternalServices({ namespace: authenticatedUser.id, first: 1, after: null }),
+                              ])
+                            : of(null)
+                    ),
+                    catchError(error => [asError(error)])
                 )
-                .subscribe(userRepositories => {
-                    const hasUserAddedRepositories = userRepositories !== null && userRepositories.nodes.length > 0
-                    this.setState({ hasUserAddedRepositories })
+                .subscribe(result => {
+                    if (!isErrorLike(result) && result !== null) {
+                        const [userRepositoriesResult, externalServicesResult] = result
+                        this.setState({
+                            hasUserAddedRepositories: userRepositoriesResult.nodes.length > 0,
+                            hasUserAddedExternalServices: externalServicesResult.nodes.length > 0,
+                        })
+                    }
                 })
-        )
-
-        this.subscriptions.add(
-            fetchSearchContexts({ first: 1 }).subscribe(({ totalCount }) =>
-                this.setState({ hasUserDefinedContexts: totalCount > 0 })
-            )
         )
 
         /**
@@ -378,6 +415,15 @@ class ColdSourcegraphWebApp extends React.Component<SourcegraphWebAppProps, Sour
                         location.reload()
                     }
                 })
+        )
+
+        this.subscriptions.add(
+            fetchFeatureFlags().subscribe(event => {
+                // Disabling linter here because this is not yet used anywhere.
+                // This can be re-enabled as soon as feature flags are leveraged.
+                // eslint-disable-next-line react/no-unused-state
+                this.setState({ featureFlags: event })
+            })
         )
 
         if (this.state.parsedSearchQuery && !filterExists(this.state.parsedSearchQuery, FilterType.context)) {
@@ -414,6 +460,13 @@ class ColdSourcegraphWebApp extends React.Component<SourcegraphWebAppProps, Sour
         localStorage.setItem(LIGHT_THEME_LOCAL_STORAGE_KEY, this.state.themePreference)
         document.documentElement.classList.toggle('theme-light', this.isLightTheme())
         document.documentElement.classList.toggle('theme-dark', !this.isLightTheme())
+
+        // If the refresh toggle is enabled and a user hasn't modified the toggle before, default the value to true
+        if (this.state.designRefreshToggleEnabled && localStorage.getItem(REDESIGN_TOGGLE_KEY) === null) {
+            localStorage.setItem(REDESIGN_TOGGLE_KEY, 'true')
+        }
+
+        document.documentElement.classList.toggle(REDESIGN_CLASS_NAME, getIsRedesignEnabled())
     }
 
     public render(): React.ReactFragment | null {
@@ -449,78 +502,91 @@ class ColdSourcegraphWebApp extends React.Component<SourcegraphWebAppProps, Sour
         const { children, ...props } = this.props
 
         return (
-            <ErrorBoundary location={null}>
-                <ShortcutProvider>
-                    <BrowserRouter key={0}>
-                        {/* eslint-disable react/jsx-no-bind */}
-                        <Route
-                            path="/"
-                            render={routeComponentProps => (
-                                <LayoutWithActivation
-                                    {...props}
-                                    {...routeComponentProps}
-                                    authenticatedUser={authenticatedUser}
-                                    viewerSubject={this.state.viewerSubject}
-                                    settingsCascade={this.state.settingsCascade}
-                                    showBatchChanges={this.props.showBatchChanges}
-                                    // Theme
-                                    isLightTheme={this.isLightTheme()}
-                                    themePreference={this.state.themePreference}
-                                    onThemePreferenceChange={this.onThemePreferenceChange}
-                                    // Search query
-                                    navbarSearchQueryState={this.state.navbarSearchQueryState}
-                                    onNavbarQueryChange={this.onNavbarQueryChange}
-                                    fetchHighlightedFileLineRanges={fetchHighlightedFileLineRanges}
-                                    searchRequest={search}
-                                    parsedSearchQuery={this.state.parsedSearchQuery}
-                                    setParsedSearchQuery={this.setParsedSearchQuery}
-                                    patternType={this.state.searchPatternType}
-                                    setPatternType={this.setPatternType}
-                                    caseSensitive={this.state.searchCaseSensitivity}
-                                    setCaseSensitivity={this.setCaseSensitivity}
-                                    versionContext={this.state.versionContext}
-                                    setVersionContext={this.setVersionContext}
-                                    availableVersionContexts={this.state.availableVersionContexts}
-                                    previousVersionContext={this.state.previousVersionContext}
-                                    copyQueryButton={this.state.copyQueryButton}
-                                    // Extensions
-                                    platformContext={this.platformContext}
-                                    extensionsController={this.extensionsController}
-                                    telemetryService={eventLogger}
-                                    isSourcegraphDotCom={window.context.sourcegraphDotComMode}
-                                    showRepogroupHomepage={this.state.showRepogroupHomepage}
-                                    showOnboardingTour={this.state.showOnboardingTour}
-                                    showSearchContext={this.canShowSearchContext()}
-                                    showSearchContextManagement={this.state.showSearchContextManagement}
-                                    selectedSearchContextSpec={this.getSelectedSearchContextSpec()}
-                                    setSelectedSearchContextSpec={this.setSelectedSearchContextSpec}
-                                    fetchAutoDefinedSearchContexts={fetchAutoDefinedSearchContexts}
-                                    fetchSearchContexts={fetchSearchContexts}
-                                    defaultSearchContextSpec={this.state.defaultSearchContextSpec}
-                                    showEnterpriseHomePanels={this.state.showEnterpriseHomePanels}
-                                    globbing={this.state.globbing}
-                                    showMultilineSearchConsole={this.state.showMultilineSearchConsole}
-                                    showQueryBuilder={this.state.showQueryBuilder}
-                                    enableSmartQuery={this.state.enableSmartQuery}
-                                    enableCodeMonitoring={this.state.enableCodeMonitoring}
-                                    fetchSavedSearches={fetchSavedSearches}
-                                    fetchRecentSearches={fetchRecentSearches}
-                                    fetchRecentFileViews={fetchRecentFileViews}
-                                    streamSearch={aggregateStreamingSearch}
-                                    onUserRepositoriesUpdate={this.onUserRepositoriesUpdate}
-                                />
-                            )}
+            <ApolloProvider client={client}>
+                <ErrorBoundary location={null}>
+                    <ShortcutProvider>
+                        <BrowserRouter key={0}>
+                            <Route
+                                path="/"
+                                render={routeComponentProps => (
+                                    <CodeHostScopeProvider authenticatedUser={authenticatedUser}>
+                                        <LayoutWithActivation
+                                            {...props}
+                                            {...routeComponentProps}
+                                            authenticatedUser={authenticatedUser}
+                                            viewerSubject={this.state.viewerSubject}
+                                            settingsCascade={this.state.settingsCascade}
+                                            showBatchChanges={this.props.showBatchChanges}
+                                            // Theme
+                                            isLightTheme={this.isLightTheme()}
+                                            themePreference={this.state.themePreference}
+                                            onThemePreferenceChange={this.onThemePreferenceChange}
+                                            // Search query
+                                            navbarSearchQueryState={this.state.navbarSearchQueryState}
+                                            onNavbarQueryChange={this.onNavbarQueryChange}
+                                            fetchHighlightedFileLineRanges={fetchHighlightedFileLineRanges}
+                                            parsedSearchQuery={this.state.parsedSearchQuery}
+                                            setParsedSearchQuery={this.setParsedSearchQuery}
+                                            patternType={this.state.searchPatternType}
+                                            setPatternType={this.setPatternType}
+                                            caseSensitive={this.state.searchCaseSensitivity}
+                                            setCaseSensitivity={this.setCaseSensitivity}
+                                            versionContext={this.state.versionContext}
+                                            setVersionContext={this.setVersionContext}
+                                            availableVersionContexts={this.state.availableVersionContexts}
+                                            previousVersionContext={this.state.previousVersionContext}
+                                            // Extensions
+                                            platformContext={this.platformContext}
+                                            extensionsController={this.extensionsController}
+                                            telemetryService={eventLogger}
+                                            isSourcegraphDotCom={window.context.sourcegraphDotComMode}
+                                            showRepogroupHomepage={this.state.showRepogroupHomepage}
+                                            showOnboardingTour={this.state.showOnboardingTour}
+                                            showSearchContext={this.state.showSearchContext}
+                                            hasUserAddedRepositories={this.hasUserAddedRepositories()}
+                                            hasUserAddedExternalServices={this.state.hasUserAddedExternalServices}
+                                            showSearchContextManagement={this.state.showSearchContextManagement}
+                                            selectedSearchContextSpec={this.getSelectedSearchContextSpec()}
+                                            setSelectedSearchContextSpec={this.setSelectedSearchContextSpec}
+                                            getUserSearchContextNamespaces={getUserSearchContextNamespaces}
+                                            fetchAutoDefinedSearchContexts={fetchAutoDefinedSearchContexts}
+                                            fetchSearchContexts={fetchSearchContexts}
+                                            fetchSearchContext={fetchSearchContext}
+                                            createSearchContext={createSearchContext}
+                                            updateSearchContext={updateSearchContext}
+                                            deleteSearchContext={deleteSearchContext}
+                                            convertVersionContextToSearchContext={convertVersionContextToSearchContext}
+                                            isSearchContextSpecAvailable={isSearchContextSpecAvailable}
+                                            defaultSearchContextSpec={this.state.defaultSearchContextSpec}
+                                            showEnterpriseHomePanels={this.state.showEnterpriseHomePanels}
+                                            globbing={this.state.globbing}
+                                            showMultilineSearchConsole={this.state.showMultilineSearchConsole}
+                                            showSearchNotebook={this.state.showSearchNotebook}
+                                            showQueryBuilder={this.state.showQueryBuilder}
+                                            enableCodeMonitoring={this.state.enableCodeMonitoring}
+                                            fetchSavedSearches={fetchSavedSearches}
+                                            fetchRecentSearches={fetchRecentSearches}
+                                            fetchRecentFileViews={fetchRecentFileViews}
+                                            streamSearch={aggregateStreamingSearch}
+                                            onUserExternalServicesOrRepositoriesUpdate={
+                                                this.onUserExternalServicesOrRepositoriesUpdate
+                                            }
+                                            onSyncedPublicRepositoriesUpdate={this.onSyncedPublicRepositoriesUpdate}
+                                            featureFlags={this.state.featureFlags}
+                                        />
+                                    </CodeHostScopeProvider>
+                                )}
+                            />
+                        </BrowserRouter>
+                        <Tooltip key={1} />
+                        <Notifications
+                            key={2}
+                            extensionsController={this.extensionsController}
+                            notificationClassNames={notificationClassNames}
                         />
-                        {/* eslint-enable react/jsx-no-bind */}
-                    </BrowserRouter>
-                    <Tooltip key={1} />
-                    <Notifications
-                        key={2}
-                        extensionsController={this.extensionsController}
-                        notificationClassNames={notificationClassNames}
-                    />
-                </ShortcutProvider>
-            </ErrorBoundary>
+                    </ShortcutProvider>
+                </ErrorBoundary>
+            </ApolloProvider>
         )
     }
 
@@ -565,15 +631,27 @@ class ColdSourcegraphWebApp extends React.Component<SourcegraphWebAppProps, Sour
         await extensionHostAPI.setVersionContext(resolvedVersionContext)
     }
 
-    private onUserRepositoriesUpdate = (userRepoCount: number): void => {
-        this.setState({ hasUserAddedRepositories: userRepoCount > 0 })
+    private onUserExternalServicesOrRepositoriesUpdate = (
+        externalServicesCount: number,
+        userRepoCount: number
+    ): void => {
+        this.setState({
+            hasUserAddedExternalServices: externalServicesCount > 0,
+            hasUserAddedRepositories: userRepoCount > 0,
+        })
     }
 
-    private canShowSearchContext = (): boolean =>
-        this.state.showSearchContext && (this.state.hasUserAddedRepositories || this.state.hasUserDefinedContexts)
+    private onSyncedPublicRepositoriesUpdate = (publicReposCount: number): void => {
+        this.setState({
+            hasUserSyncedPublicRepositories: publicReposCount > 0,
+        })
+    }
+
+    private hasUserAddedRepositories = (): boolean =>
+        this.state.hasUserAddedRepositories || this.state.hasUserSyncedPublicRepositories
 
     private getSelectedSearchContextSpec = (): string | undefined =>
-        this.canShowSearchContext() ? this.state.selectedSearchContextSpec : undefined
+        this.state.showSearchContext ? this.state.selectedSearchContextSpec : undefined
 
     private setSelectedSearchContextSpec = (spec: string): void => {
         const { defaultSearchContextSpec } = this.state
@@ -596,5 +674,3 @@ class ColdSourcegraphWebApp extends React.Component<SourcegraphWebAppProps, Sour
         await extensionHostAPI.setSearchContext(spec)
     }
 }
-
-export const SourcegraphWebApp = hot(ColdSourcegraphWebApp)

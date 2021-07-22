@@ -2,7 +2,8 @@ package worker
 
 import (
 	"context"
-	"errors"
+
+	"github.com/cockroachdb/errors"
 
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/executor"
 	"github.com/sourcegraph/sourcegraph/internal/workerutil"
@@ -15,7 +16,6 @@ type storeShim struct {
 
 type QueueStore interface {
 	Dequeue(ctx context.Context, queueName string, payload *executor.Job) (bool, error)
-
 	AddExecutionLogEntry(ctx context.Context, queueName string, jobID int, entry workerutil.ExecutionLogEntry) error
 	MarkComplete(ctx context.Context, queueName string, jobID int) error
 	MarkErrored(ctx context.Context, queueName string, jobID int, errorMessage string) error
@@ -28,14 +28,19 @@ func (s *storeShim) QueuedCount(ctx context.Context, extraArguments interface{})
 	return 0, errors.New("unimplemented")
 }
 
-func (s *storeShim) Dequeue(ctx context.Context, extraArguments interface{}) (workerutil.Record, workerutil.Store, bool, error) {
+func (s *storeShim) Dequeue(ctx context.Context, workerHostname string, extraArguments interface{}) (workerutil.Record, bool, error) {
 	var job executor.Job
 	dequeued, err := s.queueStore.Dequeue(ctx, s.queueName, &job)
 	if err != nil {
-		return nil, nil, false, err
+		return nil, false, err
 	}
 
-	return job, s, dequeued, nil
+	return job, dequeued, nil
+}
+
+func (s *storeShim) Heartbeat(ctx context.Context, id int) error {
+	// Not needed, we do bulk updates from the executor.
+	return nil
 }
 
 func (s *storeShim) AddExecutionLogEntry(ctx context.Context, id int, entry workerutil.ExecutionLogEntry) error {
@@ -52,8 +57,4 @@ func (s *storeShim) MarkErrored(ctx context.Context, id int, errorMessage string
 
 func (s *storeShim) MarkFailed(ctx context.Context, id int, errorMessage string) (bool, error) {
 	return true, s.queueStore.MarkFailed(ctx, s.queueName, id, errorMessage)
-}
-
-func (s *storeShim) Done(err error) error {
-	return err
 }

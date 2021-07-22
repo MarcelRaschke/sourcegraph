@@ -3,35 +3,28 @@ import * as H from 'history'
 import React from 'react'
 import { act } from 'react-dom/test-utils'
 import { Dropdown, DropdownItem, DropdownToggle } from 'reactstrap'
-import { of } from 'rxjs'
 import sinon from 'sinon'
 
-import { ISearchContext } from '@sourcegraph/shared/src/graphql/schema'
+import { NOOP_TELEMETRY_SERVICE } from '@sourcegraph/shared/src/telemetry/telemetryService'
 import { MockIntersectionObserver } from '@sourcegraph/shared/src/util/MockIntersectionObserver'
 
 import { SearchPatternType } from '../../graphql-operations'
-import { mockFetchSearchContexts } from '../../searchContexts/testHelpers'
+import {
+    mockFetchAutoDefinedSearchContexts,
+    mockFetchSearchContexts,
+    mockGetUserSearchContextNamespaces,
+} from '../../searchContexts/testHelpers'
 
 import { SearchContextDropdown, SearchContextDropdownProps } from './SearchContextDropdown'
 
-const mockFetchAutoDefinedSearchContexts = () =>
-    of([
-        {
-            __typename: 'SearchContext',
-            id: '1',
-            spec: 'global',
-            autoDefined: true,
-            description: 'All repositories on Sourcegraph',
-            repositories: [],
-        },
-    ] as ISearchContext[])
-
 describe('SearchContextDropdown', () => {
     const defaultProps: SearchContextDropdownProps = {
+        telemetryService: NOOP_TELEMETRY_SERVICE,
         query: '',
         showSearchContextManagement: false,
-        fetchAutoDefinedSearchContexts: mockFetchAutoDefinedSearchContexts(),
+        fetchAutoDefinedSearchContexts: mockFetchAutoDefinedSearchContexts(1),
         fetchSearchContexts: mockFetchSearchContexts,
+        getUserSearchContextNamespaces: mockGetUserSearchContextNamespaces,
         defaultSearchContextSpec: '',
         selectedSearchContextSpec: '',
         setSelectedSearchContextSpec: () => {},
@@ -40,6 +33,11 @@ describe('SearchContextDropdown', () => {
         patternType: SearchPatternType.literal,
         versionContext: undefined,
         submitSearch: () => {},
+        isSearchOnboardingTourVisible: false,
+        hasUserAddedRepositories: false,
+        hasUserAddedExternalServices: false,
+        isSourcegraphDotCom: false,
+        authenticatedUser: null,
     }
     const RealIntersectionObserver = window.IntersectionObserver
     let clock: sinon.SinonFakeTimers

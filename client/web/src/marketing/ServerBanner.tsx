@@ -8,10 +8,10 @@ const onClickInstall = (): void => {
 }
 
 export const ServerBanner: React.FunctionComponent = () => (
-    <DismissibleAlert partialStorageKey="set-up-self-hosted" className="alert alert-info">
+    <DismissibleAlert partialStorageKey="set-up-self-hosted" className="alert-info">
         <span>
             Search your private and internal code.{' '}
-            <a href="https://docs.sourcegraph.com/#quickstart" onClick={onClickInstall}>
+            <a href="https://docs.sourcegraph.com/#quick-install" onClick={onClickInstall}>
                 Set up a self-hosted Sourcegraph instance.
             </a>
         </span>
@@ -19,11 +19,11 @@ export const ServerBanner: React.FunctionComponent = () => (
 )
 
 export const ServerBannerNoRepo: React.FunctionComponent = () => (
-    <DismissibleAlert partialStorageKey="set-up-self-hosted" className="alert alert-info">
+    <DismissibleAlert partialStorageKey="set-up-self-hosted" className="alert-info">
         <span>
             Sourcegraph.com searches over the top 100k GitHub repositories by default. You can search over other public
             repositories by providing a repo: filter or you can search all of your own private code by{' '}
-            <a href="https://docs.sourcegraph.com/#quickstart" onClick={onClickInstall}>
+            <a href="https://docs.sourcegraph.com/#quick-install" onClick={onClickInstall}>
                 setting up a self-hosted Sourcegraph instance.
             </a>
         </span>

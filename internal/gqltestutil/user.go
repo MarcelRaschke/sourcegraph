@@ -1,7 +1,7 @@
 package gqltestutil
 
 import (
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 )
 
 // CreateUser creates a new user with the given username and email.
@@ -45,7 +45,7 @@ mutation CreateUser($username: String!, $email: String) {
 func (c *Client) DeleteUser(id string, hard bool) error {
 	const query = `
 mutation DeleteUser($user: ID!, $hard: Boolean) {
-	 deleteUser(user: $user, hard: $hard) {
+	deleteUser(user: $user, hard: $hard) {
 		alwaysNil
 	}
 }

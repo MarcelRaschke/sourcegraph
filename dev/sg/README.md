@@ -1,25 +1,56 @@
 # sg - the Sourcegraph developer tool
 
+```
+          _____                    _____
+         /\    \                  /\    \
+        /::\    \                /::\    \
+       /::::\    \              /::::\    \
+      /::::::\    \            /::::::\    \
+     /:::/\:::\    \          /:::/\:::\    \
+    /:::/__\:::\    \        /:::/  \:::\    \
+    \:::\   \:::\    \      /:::/    \:::\    \
+  ___\:::\   \:::\    \    /:::/    / \:::\    \
+ /\   \:::\   \:::\    \  /:::/    /   \:::\ ___\
+/::\   \:::\   \:::\____\/:::/____/  ___\:::|    |
+\:::\   \:::\   \::/    /\:::\    \ /\  /:::|____|
+ \:::\   \:::\   \/____/  \:::\    /::\ \::/    /
+  \:::\   \:::\    \       \:::\   \:::\ \/____/
+   \:::\   \:::\____\       \:::\   \:::\____\
+    \:::\  /:::/    /        \:::\  /:::/    /
+     \:::\/:::/    /          \:::\/:::/    /
+      \::::::/    /            \::::::/    /
+       \::::/    /              \::::/    /
+        \::/    /                \::/____/
+         \/____/
+
+```
+
 `sg` is the CLI tool that Sourcegraph developers can use to develop Sourcegraph.
 
 - [Quickstart](#quickstart)
-- [Installation](#installation)
 - [Usage](#usage)
-  - [Start dev environment](#start-dev-environment)
-  - [Running tests](#running-tests)
-  - [Generators](#generators)
-  - [Database migrations](#database-migrations)
-  - [Edit configuration files](#edit-configuration-files)
+  - [`sg [start,run,run-set]` - Start dev environment](#sg-startrunrun-set---start-dev-environment)
+  - [`sg test` - Running test suites](#sg-test---running-test-suites)
+  - [`sg doctor` - Check health of dev environment](#sg-doctor---check-health-of-dev-environment)
+  - [`sg live` - See currently deployed version](#sg-live---see-currently-deployed-version)
+  - [`sg migration` - Run or manipulate database migrations](#sg-migration---run-or-manipulate-database-migrations)
+  - [`sg rfc` - List, open, or search Sourcegraph RFCs](#sg-rfc---list-or-open-sourcegraph-rfcs)
 - [Configuration](#configuration)
 - [TODOs](#todos)
 - [Hacking](#hacking)
+- [Principles](#principles)
+- [Inspiration](#inspiration)
+- [Ideas](#ideas)
+  - [Generators](#generators)
+  - [Edit configuration files](#edit-configuration-files)
+  - [Tail logs](#tail-logs)
 
 ## Quickstart
 
-Run the following to install `sg` from the `main` branch:
+Run the following to install `sg` from inside `sourcegraph/sourcegraph`:
 
 ```
-go install github.com/sourcegraph/sourcegraph/dev/sg@latest
+./dev/sg/install.sh
 ```
 
 Make sure that `$HOME/go/bin` is in your `$PATH`. (If you use `$GOPATH` then `$GOPATH/bin` needs to be in the `$PATH`)
@@ -60,18 +91,12 @@ go build -o ~/my/path/sg ./dev/sg
 
 Make sure that `~/my/path` is in your `$PATH` then.
 
-## Inspiration
-
-- [GitLab Developer Kit (GDK)](https://gitlab.com/gitlab-org/gitlab-development-kit)
-- Stripe's `pay` command, [described here](https://buttondown.email/nelhage/archive/papers-i-love-gg/)
-- [Stack Exchange Local Environment Setup](https://twitter.com/nick_craver/status/1375871107773956103?s=21) command
-
 ## Usage
 
-### Start dev environment
+### `sg [start,run,run-set]` - Start dev environment
 
 ```bash
-# Run default environment (this starts the 'default' command set defined in config):
+# Run default environment (this starts the 'default' command set defined in `sg.config.yaml`):
 sg start
 
 # Run the enterprise environment:
@@ -81,83 +106,85 @@ sg run-set enterprise
 sg run gitserver
 sg run frontend
 
-# Run predefined sets of commands:
-sg run-set enterprise
+# List available commands:
+sg run -help
 
-# TODO: Rebuild and restart a command (if it has `build` defined, see Configuration)
-sg build gitserver
+# List available command sets:
+sg run-set -help
 ```
 
-### Running tests
+### `sg test` - Running test suites
 
 ```bash
-# Run go tests
+# Run different test suites:
 sg test backend
-
-# Run web e2e integration tests
+sg test backend-integration
+sg test frontend
 sg test frontend-e2e
 
-# Run other tests
-sg test backend-integration
-sg test frontend-snapshot
-sg test regression
+# List available test suites:
+sg test -help
 
-# Without argument it lists all available tests:
-sg test
-
-# TODO: Arguments are passed along to the command
+# Arguments are passed along to the command
 sg test backend-integration -run TestSearch
 ```
 
-### Generators
-
-TODO: Build this
+### `sg doctor` - Check health of dev environment
 
 ```bash
-# Generate code
-sg generate
-
-# Generate only specific things
-sg generate mocks ./internal/enterprise/batches
+# Run the checks defined in sg.config.yaml
+sg doctor
 ```
 
-### Database migrations
-
-TODO: Build this
+### `sg live` - See currently deployed version
 
 ```bash
-# Create a new migration
-sg migration new --name=my-new-migration
-# Create a new migration for the codeintel database
-sg migration new --db=codeintel --name=my-new-migration
+# See which version is deployed on a preset environment
+sg live dot-com
+sg live k8s
 
-# Run all migrations _up_
+# See which version is deployed on a custom environment
+sg live https://demo.sourcegraph.com
+
+# List environments:
+sg live -help
+```
+
+### `sg migration` - Run or manipulate database migrations
+
+```bash
+# Migrate local default database up
 sg migration up
-sg migration down
+
+# Migrate specific database down one migration
+sg migration down --db codeintel -n 1
+
+# Add new migration for specific database
+sg migration add --db codeintel 'add missing index'
+
+# Squash migrations for default database
+sg migration squash
+
+# Fixup your migrations comapred to main for databases
+sg migration fixup
+
+# To see what operations `sg migration fixup` will run, you can check with
+sg migration fixup -run=false
+
+# Or to run for only one database, you can use the -db flag, as in other operations.
 ```
 
-### Edit configuration files
-
-TODO: Build this
+### `sg rfc` - List or open Sourcegraph RFCs
 
 ```bash
-# Edit the site configuration
-sg edit site-config # opens site-config in $EDITOR
-# Edit external service configuration
-sg edit external-services # opens external-services.json in $EDITOR
-```
+# List all RFCs
+sg rfc list
 
-### Tail logs
+# Search for an RFC
+sg rfc search "search terms"
 
-TODO: Build this
-
-```bash
-# Tail the SQL logs
-sg tail-log sql
-# Tail the http logs
-sg tail-log http
-# Tail all logs
-sg tail-log all
+# Open a specific RFC
+sg rfc open 420
 ```
 
 ## Configuration
@@ -187,8 +214,8 @@ commands:
     install: go install github.com/sourcegraph/sourcegraph/cmd/searcher -o .bin/gitserver
 
   caddy:
-    install_doc.darwin: 'use brew install'
-    install_doc.linux: 'use apt install'
+    installDoc.darwin: 'use brew install'
+    installDoc.linux: 'use apt install'
 
   web:
     cmd: ./node_modules/.bin/gulp --silent --color dev
@@ -260,19 +287,19 @@ tests:
 
 ## TODOs
 
-- [ ] All of the things marked as TODOs above
+- [ ] Rename `install` in the config files to `build` because it's clearer
 - [ ] Add the remaining processes from `<root>/dev/Procfile` to `<root>/sg.config.yaml`
-- [ ] Add a _simple_ way to define in the config file when a restart after a rebuild is not necessary
-  - Something like `check_binary: .bin/frontend` which would take a SHA256 before and after rebuild and only restart if SHA doesn't match
-- [ ] Rename `install` to `build` because it's clearer
-- [ ] Add support for "dev environment setup"
-  - Something like `sg check` which runs `check_cmds` in the config file and provides helpful output if one of them failed ("check_cmd postgres failed. Install postgres with...")
-- [ ] Add built-in support for "download binary" so that the `caddy` command, for example, would be 3 lines instead of 20
+- [ ] All of the [ideas](#ideas) below
+  - [ ] Rebuild and restart a command (if it has `build` defined, see Configuration): `sg build gitserver`
+  - [ ] Implement the `sg generate` command
+  - [ ] Implement `sg edit site-config` and `sg edit external-services`
+  - [ ] Implement `sg tail-log`
+- [ ] Add built-in support for "download binary" so that the `caddy` command, for example, would be 3 lines instead of 20. That would allow us to get rid of the bash code.
+- [ ] Add a `sg rfc create` command
 
 ## Hacking
 
-When you want to hack on `sg` it's best to be in the `dev/sg` directory and run
-it from there:
+When you want to hack on `sg` it's best to be in the `dev/sg` directory and run it from there:
 
 ```
 cd dev/sg
@@ -280,3 +307,56 @@ go run . -config ../../sg.config.yaml start
 ```
 
 The `-config` can be anything you want, of course.
+
+## Principles
+
+- `sg` should be fun to use.
+- If you think "it would be cool if `sg` could do X": add it! Let's go :)
+- `sg` should make Sourcegraph developers productive and happy.
+- `sg` is not and should not be a build system.
+- `sg` is not and should not be a container orchestrator.
+- Try to fix [a lot of the problems in this RFC](https://docs.google.com/document/d/18hrRIN0pUBRwUFF7vkcVmstJccqWeHiecNF2t1GAZfU/edit) by encoding conventions in executable code.
+- No bash. `sg` was built to get rid of all the bash scripts in `./dev/`. If you have a chance to build something into `sg` to avoid another bash script: do it. Try to keep shell scripts to easy-to-understand one liners if you must. Replicating something in Go code that could be done in 4 lines of bash is probably a good idea.
+- Duplicated data is fine as long as it's dumb data. Copying some lines in `sg.config.yaml` to get something working is often (but not always) better than trying to be clever.
+
+You can also watch [this video](https://drive.google.com/file/d/1DXjjf1YXr8Od8vG4R74Ko-soLOx_tXa6/view?usp=sharing) to get an overview of the original thinking that lead to `sg`.
+
+## Inspiration
+
+- [GitLab Developer Kit (GDK)](https://gitlab.com/gitlab-org/gitlab-development-kit)
+- Stripe's `pay` command, [described here](https://buttondown.email/nelhage/archive/papers-i-love-gg/)
+- [Stack Exchange Local Environment Setup](https://twitter.com/nick_craver/status/1375871107773956103?s=21) command
+
+## Ideas
+
+The following are ideas for what could/should be built into `sg`:
+
+#### Generators
+
+```bash
+# Generate code, equivalent to current `./dev/generate.sh`
+sg generate
+
+# Generate only specific things
+sg generate mocks ./internal/enterprise/batches
+```
+
+#### Edit configuration files
+
+```bash
+# Edit the site configuration
+sg edit site-config # opens site-config in $EDITOR
+# Edit external service configuration
+sg edit external-services # opens external-services.json in $EDITOR
+```
+
+#### Tail logs
+
+```bash
+# Tail the SQL logs
+sg tail-log sql
+# Tail the http logs
+sg tail-log http
+# Tail all logs
+sg tail-log all
+```

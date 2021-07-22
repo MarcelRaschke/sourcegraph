@@ -3,11 +3,11 @@ package backend
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/zoekt"
 
@@ -46,6 +46,42 @@ func TestGetIndexOptions(t *testing.T) {
 		want: zoektIndexOptions{
 			RepoID:  1,
 			Symbols: true,
+			Branches: []zoekt.RepositoryBranch{
+				{Name: "HEAD", Version: "!HEAD"},
+			},
+		},
+	}, {
+		name: "public",
+		conf: schema.SiteConfiguration{},
+		repo: "public",
+		want: zoektIndexOptions{
+			RepoID:  5,
+			Public:  true,
+			Symbols: true,
+			Branches: []zoekt.RepositoryBranch{
+				{Name: "HEAD", Version: "!HEAD"},
+			},
+		},
+	}, {
+		name: "fork",
+		conf: schema.SiteConfiguration{},
+		repo: "fork",
+		want: zoektIndexOptions{
+			RepoID:  6,
+			Fork:    true,
+			Symbols: true,
+			Branches: []zoekt.RepositoryBranch{
+				{Name: "HEAD", Version: "!HEAD"},
+			},
+		},
+	}, {
+		name: "archived",
+		conf: schema.SiteConfiguration{},
+		repo: "archived",
+		want: zoektIndexOptions{
+			RepoID:   7,
+			Archived: true,
+			Symbols:  true,
 			Branches: []zoekt.RepositoryBranch{
 				{Name: "HEAD", Version: "!HEAD"},
 			},
@@ -168,6 +204,18 @@ func TestGetIndexOptions(t *testing.T) {
 				{Name: "rev2", Version: "!rev2"},
 			},
 		},
+	}, {
+		name: "with a priority value",
+		conf: schema.SiteConfiguration{},
+		repo: "priority",
+		want: zoektIndexOptions{
+			RepoID:  4,
+			Symbols: true,
+			Branches: []zoekt.RepositoryBranch{
+				{Name: "HEAD", Version: "!HEAD"},
+			},
+			Priority: 10,
+		},
 	}}
 
 	{
@@ -197,14 +245,22 @@ func TestGetIndexOptions(t *testing.T) {
 
 	getRepoIndexOptions := func(repo string) (*RepoIndexOptions, error) {
 		repoID := int32(1)
-		for _, r := range []string{"repo", "foo", "not_in_version_context"} {
+		for _, r := range []string{"repo", "foo", "not_in_version_context", "priority", "public", "fork", "archived"} {
 			if r == repo {
 				break
 			}
 			repoID++
 		}
+		var priority float64
+		if repo == "priority" {
+			priority = 10
+		}
 		return &RepoIndexOptions{
-			RepoID: repoID,
+			RepoID:   repoID,
+			Public:   repo == "public",
+			Fork:     repo == "fork",
+			Archived: repo == "archived",
+			Priority: priority,
 			GetVersion: func(branch string) (string, error) {
 				return "!" + branch, nil
 			},

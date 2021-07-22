@@ -9,6 +9,7 @@ import { asError, isErrorLike } from '@sourcegraph/shared/src/util/errors'
 import { ErrorAlert } from '../../../components/alerts'
 import { ExternalServiceKind, Scalars } from '../../../graphql-operations'
 
+import styles from './AddCredentialModal.module.scss'
 import { createBatchChangesCredential as _createBatchChangesCredential } from './backend'
 import { CodeHostSshPublicKey } from './CodeHostSshPublicKey'
 import { ModalHeader } from './ModalHeader'
@@ -27,14 +28,12 @@ export interface AddCredentialModalProps {
     initialStep?: Step
 }
 
+const HELP_TEXT_LINK_URL = 'https://docs.sourcegraph.com/batch_changes/quickstart#configure-code-host-credentials'
+
 const helpTexts: Record<ExternalServiceKind, JSX.Element> = {
     [ExternalServiceKind.GITHUB]: (
         <>
-            <a
-                href="https://docs.sourcegraph.com/batch_changes/quickstart#configure-code-host-connections"
-                rel="noreferrer noopener"
-                target="_blank"
-            >
+            <a href={HELP_TEXT_LINK_URL} rel="noreferrer noopener" target="_blank">
                 Create a new access token
             </a>{' '}
             with <code>repo</code>, <code>read:org</code>, <code>user:email</code>, and <code>read:discussion</code>{' '}
@@ -43,11 +42,7 @@ const helpTexts: Record<ExternalServiceKind, JSX.Element> = {
     ),
     [ExternalServiceKind.GITLAB]: (
         <>
-            <a
-                href="https://docs.sourcegraph.com/batch_changes/quickstart#configure-code-host-connections"
-                rel="noreferrer noopener"
-                target="_blank"
-            >
+            <a href={HELP_TEXT_LINK_URL} rel="noreferrer noopener" target="_blank">
                 Create a new access token
             </a>{' '}
             with <code>api</code>, <code>read_repository</code>, and <code>write_repository</code> scopes.
@@ -55,11 +50,7 @@ const helpTexts: Record<ExternalServiceKind, JSX.Element> = {
     ),
     [ExternalServiceKind.BITBUCKETSERVER]: (
         <>
-            <a
-                href="https://docs.sourcegraph.com/batch_changes/quickstart#configure-code-host-connections"
-                rel="noreferrer noopener"
-                target="_blank"
-            >
+            <a href={HELP_TEXT_LINK_URL} rel="noreferrer noopener" target="_blank">
                 Create a new access token
             </a>{' '}
             with <code>write</code> permissions on the project and repository level.
@@ -69,6 +60,7 @@ const helpTexts: Record<ExternalServiceKind, JSX.Element> = {
     // These are just for type completeness and serve as placeholders for a bright future.
     [ExternalServiceKind.BITBUCKETCLOUD]: <span>Unsupported</span>,
     [ExternalServiceKind.GITOLITE]: <span>Unsupported</span>,
+    [ExternalServiceKind.JVMPACKAGES]: <span>Unsupported</span>,
     [ExternalServiceKind.PERFORCE]: <span>Unsupported</span>,
     [ExternalServiceKind.PHABRICATOR]: <span>Unsupported</span>,
     [ExternalServiceKind.AWSCODECOMMIT]: <span>Unsupported</span>,
@@ -135,7 +127,7 @@ export const AddCredentialModal: React.FunctionComponent<AddCredentialModalProps
             onDismiss={onCancel}
             aria-labelledby={labelId}
         >
-            <div className="web-content test-add-credential-modal">
+            <div className="test-add-credential-modal">
                 <ModalHeader
                     id={labelId}
                     externalServiceKind={externalServiceKind}
@@ -147,7 +139,12 @@ export const AddCredentialModal: React.FunctionComponent<AddCredentialModalProps
                             <p className={classNames('mb-0 py-2', step === 'get-ssh-key' && 'text-muted')}>
                                 1. Add token
                             </p>
-                            <div className="add-credential-modal__modal-step-ruler add-credential-modal__modal-step-ruler--purple" />
+                            <div
+                                className={classNames(
+                                    styles.addCredentialModalModalStepRuler,
+                                    styles.addCredentialModalModalStepRulerPurple
+                                )}
+                            />
                         </div>
                         <div className="flex-grow-1 ml-2">
                             <p className={classNames('mb-0 py-2', step === 'add-token' && 'text-muted')}>
@@ -155,9 +152,9 @@ export const AddCredentialModal: React.FunctionComponent<AddCredentialModalProps
                             </p>
                             <div
                                 className={classNames(
-                                    'add-credential-modal__modal-step-ruler',
-                                    step === 'add-token' && 'add-credential-modal__modal-step-ruler--gray',
-                                    step === 'get-ssh-key' && 'add-credential-modal__modal-step-ruler--blue'
+                                    styles.addCredentialModalModalStepRuler,
+                                    step === 'add-token' && styles.addCredentialModalModalStepRulerGray,
+                                    step === 'get-ssh-key' && styles.addCredentialModalModalStepRulerBlue
                                 )}
                             />
                         </div>
@@ -175,6 +172,7 @@ export const AddCredentialModal: React.FunctionComponent<AddCredentialModalProps
                                     type="text"
                                     className="form-control test-add-credential-modal-input"
                                     required={true}
+                                    spellCheck="false"
                                     minLength={1}
                                     value={credential}
                                     onChange={onChangeCredential}

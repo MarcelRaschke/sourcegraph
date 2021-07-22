@@ -2,10 +2,12 @@ package database
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -13,7 +15,7 @@ import (
 
 	"github.com/sourcegraph/sourcegraph/internal/actor"
 	"github.com/sourcegraph/sourcegraph/internal/api"
-	"github.com/sourcegraph/sourcegraph/internal/database/dbtesting"
+	"github.com/sourcegraph/sourcegraph/internal/database/dbtest"
 	"github.com/sourcegraph/sourcegraph/internal/errcode"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc"
 	"github.com/sourcegraph/sourcegraph/internal/types"
@@ -68,15 +70,24 @@ func TestParseIncludePattern(t *testing.T) {
 		`^github.com/(golang|go-.*)/oauth$`: {regexp: `^github.com/(golang|go-.*)/oauth$`},
 		`^github.com/(go.*lang|go)/oauth$`:  {regexp: `^github.com/(go.*lang|go)/oauth$`},
 
-		`(^github\.com/Microsoft/vscode$)|(^github\.com/sourcegraph/go-langserver$)`: {exact: []string{"github.com/Microsoft/vscode", "github.com/sourcegraph/go-langserver"}},
+		// https://github.com/sourcegraph/sourcegraph/issues/20389
+		`^github\.com/sourcegraph/(sourcegraph-atom|sourcegraph)$`: {
+			exact: []string{"github.com/sourcegraph/sourcegraph", "github.com/sourcegraph/sourcegraph-atom"},
+		},
+
+		`(^github\.com/Microsoft/vscode$)|(^github\.com/sourcegraph/go-langserver$)`: {
+			exact: []string{"github.com/Microsoft/vscode", "github.com/sourcegraph/go-langserver"},
+		},
 
 		// Avoid DoS when there are too many possible matches to enumerate.
 		`^(a|b)(c|d)(e|f)(g|h)(i|j)(k|l)(m|n)$`: {regexp: `^(a|b)(c|d)(e|f)(g|h)(i|j)(k|l)(m|n)$`},
 		`^[0-a]$`:                               {regexp: `^[0-a]$`},
 		`sourcegraph|^github\.com/foo/bar$`: {
-			like:    []string{`%sourcegraph%`},
-			exact:   []string{"github.com/foo/bar"},
-			pattern: []*sqlf.Query{sqlf.Sprintf(`(name IN (%s) OR lower(name) LIKE %s)`, "github.com/foo/bar", "%sourcegraph%")},
+			like:  []string{`%sourcegraph%`},
+			exact: []string{"github.com/foo/bar"},
+			pattern: []*sqlf.Query{
+				sqlf.Sprintf(`(name IN (%s) OR lower(name) LIKE %s)`, "github.com/foo/bar", "%sourcegraph%"),
+			},
 		},
 	}
 	for pattern, want := range tests {
@@ -121,7 +132,8 @@ func TestRepos_Count(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	db := dbtesting.GetDB(t)
+	t.Parallel()
+	db := dbtest.NewDB(t, "")
 	ctx := context.Background()
 	ctx = actor.WithActor(ctx, &actor.Actor{UID: 1, Internal: true})
 
@@ -172,7 +184,8 @@ func TestRepos_Delete(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	db := dbtesting.GetDB(t)
+	t.Parallel()
+	db := dbtest.NewDB(t, "")
 	ctx := context.Background()
 	ctx = actor.WithActor(ctx, &actor.Actor{UID: 1, Internal: true})
 
@@ -205,7 +218,8 @@ func TestRepos_Upsert(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	db := dbtesting.GetDB(t)
+	t.Parallel()
+	db := dbtest.NewDB(t, "")
 	ctx := context.Background()
 	ctx = actor.WithActor(ctx, &actor.Actor{UID: 1, Internal: true})
 
@@ -287,7 +301,8 @@ func TestRepos_UpsertForkAndArchivedFields(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	db := dbtesting.GetDB(t)
+	t.Parallel()
+	db := dbtest.NewDB(t, "")
 	ctx := context.Background()
 	ctx = actor.WithActor(ctx, &actor.Actor{UID: 1, Internal: true})
 
@@ -324,7 +339,8 @@ func TestRepos_Create(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	db := dbtesting.GetDB(t)
+	t.Parallel()
+	db := dbtest.NewDB(t, "")
 	ctx := context.Background()
 	ctx = actor.WithActor(ctx, &actor.Actor{UID: 1, Internal: true})
 
@@ -364,6 +380,202 @@ func TestRepos_Create(t *testing.T) {
 
 		if diff := cmp.Diff(have, []*types.Repo(want), cmpopts.EquateEmpty()); diff != "" {
 			t.Fatalf("List:\n%s", diff)
+		}
+	})
+}
+
+func TestListIndexableRepos(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+
+	t.Parallel()
+	db := dbtest.NewDB(t, "")
+
+	reposToAdd := []types.Repo{
+		{
+			ID:    api.RepoID(1),
+			Name:  "github.com/foo/bar1",
+			Stars: 20,
+		},
+		{
+			ID:    api.RepoID(2),
+			Name:  "github.com/baz/bar2",
+			Stars: 30,
+		},
+		{
+			ID:      api.RepoID(3),
+			Name:    "github.com/foo/bar3",
+			Private: true,
+			Stars:   0, // Will still be returned because it gets added by a user.
+		},
+		{
+			ID:    api.RepoID(4),
+			Name:  "github.com/foo/bar4",
+			Stars: 1, // Not enough stars
+		},
+		{
+			ID:    api.RepoID(5),
+			Name:  "github.com/foo/bar5",
+			Stars: 400,
+			Blocked: &types.RepoBlock{
+				At:     time.Now().UTC().Unix(),
+				Reason: "Failed to index too many times.",
+			},
+		},
+	}
+
+	ctx := context.Background()
+	// Add an external service
+	_, err := db.ExecContext(
+		ctx,
+		`INSERT INTO external_services(id, kind, display_name, config, cloud_default) VALUES (1, 'github', 'github', '{}', true);`,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO users(id, username) VALUES (1, 'bob')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range reposToAdd {
+		blocked, err := json.Marshal(r.Blocked)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = db.ExecContext(ctx,
+			`INSERT INTO repo(id, name, stars, private, blocked) VALUES ($1, $2, $3, $4, NULLIF($5, 'null'::jsonb))`,
+			r.ID, r.Name, r.Stars, r.Private, blocked,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if r.Private {
+			if _, err := db.ExecContext(ctx, `INSERT INTO external_service_repos VALUES (1, $1, $2, 1);`, r.ID, r.Name); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		cloned := int(r.ID) > 1
+		cloneStatus := types.CloneStatusCloned
+		if !cloned {
+			cloneStatus = types.CloneStatusNotCloned
+		}
+		if _, err := db.ExecContext(ctx, `INSERT INTO gitserver_repos(repo_id, clone_status, shard_id) VALUES ($1, $2, 'test');`, r.ID, cloneStatus); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, tc := range []struct {
+		name string
+		opts ListIndexableReposOptions
+		want []api.RepoID
+	}{
+		{
+			name: "no opts",
+			want: []api.RepoID{2, 1}, // No private repos returned by default
+		},
+		{
+			name: "only uncloned",
+			opts: ListIndexableReposOptions{OnlyUncloned: true},
+			want: []api.RepoID{1},
+		},
+		{
+			name: "include private",
+			opts: ListIndexableReposOptions{IncludePrivate: true},
+			want: []api.RepoID{2, 1, 3},
+		},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			repos, err := Repos(db).ListIndexableRepos(ctx, tc.opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			have := make([]api.RepoID, 0, len(repos))
+			for _, r := range repos {
+				have = append(have, r.ID)
+			}
+
+			if diff := cmp.Diff(tc.want, have, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("mismatch (-want +have):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestRepoStore_Blocking(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+
+	t.Parallel()
+	db := dbtest.NewDB(t, "")
+	rs := Repos(db)
+
+	ctx := context.Background()
+
+	repos := []*types.Repo{
+		{
+			ID:      1,
+			Name:    "foo",
+			URI:     "foo-uri",
+			Sources: map[string]*types.SourceInfo{},
+		},
+		{
+			ID:      2,
+			Name:    "bar",
+			URI:     "bar-uri",
+			Sources: map[string]*types.SourceInfo{},
+		},
+	}
+
+	err := rs.Create(ctx, repos...)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = rs.Block(ctx, "too big", repos[1].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("GetByName_Name", func(t *testing.T) {
+		_, err := rs.GetByName(ctx, repos[0].Name)
+		if have, want := fmt.Sprint(err), "<nil>"; have != want {
+			t.Errorf("error, have: %q, want: %q", have, want)
+		}
+
+		_, err = rs.GetByName(ctx, repos[1].Name)
+		if have, want := fmt.Sprint(err), `repository bar has been blocked. reason: too big`; have != want {
+			t.Errorf("error, have: %q, want: %q", have, want)
+		}
+	})
+
+	t.Run("GetByName_URI", func(t *testing.T) {
+		_, err := rs.GetByName(ctx, api.RepoName(repos[0].URI))
+		if have, want := fmt.Sprint(err), "<nil>"; have != want {
+			t.Errorf("error, have: %q, want: %q", have, want)
+		}
+
+		_, err = rs.GetByName(ctx, api.RepoName(repos[1].URI))
+		if have, want := fmt.Sprint(err), `repository bar has been blocked. reason: too big`; have != want {
+			t.Errorf("error, have: %q, want: %q", have, want)
+		}
+	})
+
+	t.Run("List", func(t *testing.T) {
+		have, err := rs.List(ctx, ReposListOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		want := repos[:1]
+		if !cmp.Equal(have, want) {
+			t.Errorf("mismatch: (-have, +want):\n:%s", cmp.Diff(have, want))
 		}
 	})
 }

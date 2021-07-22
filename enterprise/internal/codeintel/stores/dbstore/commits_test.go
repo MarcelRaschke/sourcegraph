@@ -7,7 +7,6 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"sort"
 	"strconv"
@@ -20,7 +19,6 @@ import (
 
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/commitgraph"
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/gitserver"
-	"github.com/sourcegraph/sourcegraph/internal/database/dbconn"
 	"github.com/sourcegraph/sourcegraph/internal/database/dbtesting"
 )
 
@@ -28,8 +26,8 @@ func TestHasRepository(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	dbtesting.SetupGlobalTestDB(t)
-	store := testStore()
+	db := dbtesting.GetDB(t)
+	store := testStore(db)
 
 	testCases := []struct {
 		repositoryID int
@@ -40,8 +38,8 @@ func TestHasRepository(t *testing.T) {
 		{52, false},
 	}
 
-	insertUploads(t, dbconn.Global, Upload{ID: 1, RepositoryID: 50})
-	insertUploads(t, dbconn.Global, Upload{ID: 2, RepositoryID: 51, State: "deleted"})
+	insertUploads(t, db, Upload{ID: 1, RepositoryID: 50})
+	insertUploads(t, db, Upload{ID: 2, RepositoryID: 51, State: "deleted"})
 
 	for _, testCase := range testCases {
 		name := fmt.Sprintf("repositoryID=%d", testCase.repositoryID)
@@ -62,8 +60,8 @@ func TestHasCommit(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	dbtesting.SetupGlobalTestDB(t)
-	store := testStore()
+	db := dbtesting.GetDB(t)
+	store := testStore(db)
 
 	testCases := []struct {
 		repositoryID int
@@ -75,8 +73,8 @@ func TestHasCommit(t *testing.T) {
 		{51, makeCommit(1), false},
 	}
 
-	insertNearestUploads(t, dbconn.Global, 50, map[string][]commitgraph.UploadMeta{makeCommit(1): {{UploadID: 42, Distance: 1}}})
-	insertNearestUploads(t, dbconn.Global, 51, map[string][]commitgraph.UploadMeta{makeCommit(2): {{UploadID: 43, Distance: 2}}})
+	insertNearestUploads(t, db, 50, map[string][]commitgraph.UploadMeta{makeCommit(1): {{UploadID: 42, Distance: 1}}})
+	insertNearestUploads(t, db, 51, map[string][]commitgraph.UploadMeta{makeCommit(2): {{UploadID: 43, Distance: 2}}})
 
 	for _, testCase := range testCases {
 		name := fmt.Sprintf("repositoryID=%d commit=%s", testCase.repositoryID, testCase.commit)
@@ -97,11 +95,11 @@ func TestMarkRepositoryAsDirty(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	dbtesting.SetupGlobalTestDB(t)
-	store := testStore()
+	db := dbtesting.GetDB(t)
+	store := testStore(db)
 
 	for _, id := range []int{50, 51, 52} {
-		insertRepo(t, dbconn.Global, id, "")
+		insertRepo(t, db, id, "")
 	}
 
 	for _, repositoryID := range []int{50, 51, 52, 51, 52} {
@@ -131,13 +129,13 @@ func TestSkipsDeletedRepositories(t *testing.T) {
 		t.Skip()
 	}
 
-	dbtesting.SetupGlobalTestDB(t)
-	store := testStore()
+	db := dbtesting.GetDB(t)
+	store := testStore(db)
 
-	insertRepo(t, dbconn.Global, 50, "should not be dirty")
-	deleteRepo(t, dbconn.Global, 50, time.Now())
+	insertRepo(t, db, 50, "should not be dirty")
+	deleteRepo(t, db, 50, time.Now())
 
-	insertRepo(t, dbconn.Global, 51, "should be dirty")
+	insertRepo(t, db, 51, "should be dirty")
 
 	// NOTE: We did not insert 52, so it should not show up as dirty, even though we mark it below.
 
@@ -167,8 +165,8 @@ func TestCommitGraphMetadata(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	dbtesting.SetupGlobalTestDB(t)
-	store := testStore()
+	db := dbtesting.GetDB(t)
+	store := testStore(db)
 
 	if err := store.MarkRepositoryAsDirty(context.Background(), 50); err != nil {
 		t.Errorf("unexpected error marking repository as dirty: %s", err)
@@ -176,7 +174,7 @@ func TestCommitGraphMetadata(t *testing.T) {
 
 	updatedAt := time.Unix(1587396557, 0).UTC()
 	query := sqlf.Sprintf("INSERT INTO lsif_dirty_repositories VALUES (%s, %s, %s, %s)", 51, 10, 10, updatedAt)
-	if _, err := dbconn.Global.ExecContext(context.Background(), query.Query(sqlf.PostgresBindVar), query.Args()...); err != nil {
+	if _, err := db.ExecContext(context.Background(), query.Query(sqlf.PostgresBindVar), query.Args()...); err != nil {
 		t.Fatalf("unexpected error inserting commit graph metadata: %s", err)
 	}
 
@@ -212,8 +210,8 @@ func TestCalculateVisibleUploads(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	dbtesting.SetupGlobalTestDB(t)
-	store := testStore()
+	db := dbtesting.GetDB(t)
+	store := testStore(db)
 
 	// This database has the following commit graph:
 	//
@@ -226,7 +224,7 @@ func TestCalculateVisibleUploads(t *testing.T) {
 		{ID: 2, Commit: makeCommit(3)},
 		{ID: 3, Commit: makeCommit(7)},
 	}
-	insertUploads(t, dbconn.Global, uploads...)
+	insertUploads(t, db, uploads...)
 
 	graph := gitserver.ParseCommitGraph([]string{
 		strings.Join([]string{makeCommit(8), makeCommit(6)}, " "),
@@ -239,7 +237,11 @@ func TestCalculateVisibleUploads(t *testing.T) {
 		strings.Join([]string{makeCommit(1)}, " "),
 	})
 
-	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, makeCommit(8), 0, time.Time{}); err != nil {
+	refDescriptions := map[string]gitserver.RefDescription{
+		makeCommit(8): {IsDefaultBranch: true},
+	}
+
+	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, refDescriptions, time.Hour, time.Hour, 0, time.Time{}); err != nil {
 		t.Fatalf("unexpected error while calculating visible uploads: %s", err)
 	}
 
@@ -253,11 +255,11 @@ func TestCalculateVisibleUploads(t *testing.T) {
 		makeCommit(7): {3},
 		makeCommit(8): {1},
 	}
-	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, dbconn.Global, 50, keysOf(expectedVisibleUploads))); diff != "" {
+	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, db, 50, keysOf(expectedVisibleUploads))); diff != "" {
 		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
 	}
 
-	if diff := cmp.Diff([]int{1}, getUploadsVisibleAtTip(t, dbconn.Global, 50)); diff != "" {
+	if diff := cmp.Diff([]int{1}, getUploadsVisibleAtTip(t, db, 50)); diff != "" {
 		t.Errorf("unexpected uploads visible at tip (-want +got):\n%s", diff)
 	}
 }
@@ -266,8 +268,8 @@ func TestCalculateVisibleUploadsAlternateCommitGraph(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	dbtesting.SetupGlobalTestDB(t)
-	store := testStore()
+	db := dbtesting.GetDB(t)
+	store := testStore(db)
 
 	// This database has the following commit graph:
 	//
@@ -280,7 +282,7 @@ func TestCalculateVisibleUploadsAlternateCommitGraph(t *testing.T) {
 	uploads := []Upload{
 		{ID: 1, Commit: makeCommit(2)},
 	}
-	insertUploads(t, dbconn.Global, uploads...)
+	insertUploads(t, db, uploads...)
 
 	graph := gitserver.ParseCommitGraph([]string{
 		strings.Join([]string{makeCommit(8), makeCommit(7)}, " "),
@@ -293,7 +295,11 @@ func TestCalculateVisibleUploadsAlternateCommitGraph(t *testing.T) {
 		strings.Join([]string{makeCommit(1)}, " "),
 	})
 
-	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, makeCommit(3), 0, time.Time{}); err != nil {
+	refDescriptions := map[string]gitserver.RefDescription{
+		makeCommit(3): {IsDefaultBranch: true},
+	}
+
+	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, refDescriptions, time.Hour, time.Hour, 0, time.Time{}); err != nil {
 		t.Fatalf("unexpected error while calculating visible uploads: %s", err)
 	}
 
@@ -301,11 +307,11 @@ func TestCalculateVisibleUploadsAlternateCommitGraph(t *testing.T) {
 		makeCommit(2): {1},
 		makeCommit(3): {1},
 	}
-	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, dbconn.Global, 50, keysOf(expectedVisibleUploads))); diff != "" {
+	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, db, 50, keysOf(expectedVisibleUploads))); diff != "" {
 		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
 	}
 
-	if diff := cmp.Diff([]int{1}, getUploadsVisibleAtTip(t, dbconn.Global, 50)); diff != "" {
+	if diff := cmp.Diff([]int{1}, getUploadsVisibleAtTip(t, db, 50)); diff != "" {
 		t.Errorf("unexpected uploads visible at tip (-want +got):\n%s", diff)
 	}
 }
@@ -314,36 +320,40 @@ func TestCalculateVisibleUploadsDistinctRoots(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	dbtesting.SetupGlobalTestDB(t)
-	store := testStore()
+	db := dbtesting.GetDB(t)
+	store := testStore(db)
 
 	// This database has the following commit graph:
 	//
-	// 1 --+-- [2]
+	// 1 -- [2]
 
 	uploads := []Upload{
 		{ID: 1, Commit: makeCommit(2), Root: "root1/"},
 		{ID: 2, Commit: makeCommit(2), Root: "root2/"},
 	}
-	insertUploads(t, dbconn.Global, uploads...)
+	insertUploads(t, db, uploads...)
 
 	graph := gitserver.ParseCommitGraph([]string{
 		strings.Join([]string{makeCommit(2), makeCommit(1)}, " "),
 		strings.Join([]string{makeCommit(1)}, " "),
 	})
 
-	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, makeCommit(2), 0, time.Time{}); err != nil {
+	refDescriptions := map[string]gitserver.RefDescription{
+		makeCommit(2): {IsDefaultBranch: true},
+	}
+
+	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, refDescriptions, time.Hour, time.Hour, 0, time.Time{}); err != nil {
 		t.Fatalf("unexpected error while calculating visible uploads: %s", err)
 	}
 
 	expectedVisibleUploads := map[string][]int{
 		makeCommit(2): {1, 2},
 	}
-	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, dbconn.Global, 50, keysOf(expectedVisibleUploads))); diff != "" {
+	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, db, 50, keysOf(expectedVisibleUploads))); diff != "" {
 		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
 	}
 
-	if diff := cmp.Diff([]int{1, 2}, getUploadsVisibleAtTip(t, dbconn.Global, 50)); diff != "" {
+	if diff := cmp.Diff([]int{1, 2}, getUploadsVisibleAtTip(t, db, 50)); diff != "" {
 		t.Errorf("unexpected uploads visible at tip (-want +got):\n%s", diff)
 	}
 }
@@ -352,8 +362,8 @@ func TestCalculateVisibleUploadsOverlappingRoots(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	dbtesting.SetupGlobalTestDB(t)
-	store := testStore()
+	db := dbtesting.GetDB(t)
+	store := testStore(db)
 
 	// This database has the following commit graph:
 	//
@@ -386,7 +396,7 @@ func TestCalculateVisibleUploadsOverlappingRoots(t *testing.T) {
 		{ID: 8, Commit: makeCommit(5), Indexer: "lsif-go", Root: "root2/"},
 		{ID: 9, Commit: makeCommit(6), Indexer: "lsif-go", Root: "root1/"},
 	}
-	insertUploads(t, dbconn.Global, uploads...)
+	insertUploads(t, db, uploads...)
 
 	graph := gitserver.ParseCommitGraph([]string{
 		strings.Join([]string{makeCommit(6), makeCommit(5)}, " "),
@@ -397,7 +407,11 @@ func TestCalculateVisibleUploadsOverlappingRoots(t *testing.T) {
 		strings.Join([]string{makeCommit(1)}, " "),
 	})
 
-	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, makeCommit(6), 0, time.Time{}); err != nil {
+	refDescriptions := map[string]gitserver.RefDescription{
+		makeCommit(6): {IsDefaultBranch: true},
+	}
+
+	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, refDescriptions, time.Hour, time.Hour, 0, time.Time{}); err != nil {
 		t.Fatalf("unexpected error while calculating visible uploads: %s", err)
 	}
 
@@ -409,11 +423,11 @@ func TestCalculateVisibleUploadsOverlappingRoots(t *testing.T) {
 		makeCommit(5): {1, 2, 6, 7, 8},
 		makeCommit(6): {1, 2, 7, 8, 9},
 	}
-	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, dbconn.Global, 50, keysOf(expectedVisibleUploads))); diff != "" {
+	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, db, 50, keysOf(expectedVisibleUploads))); diff != "" {
 		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
 	}
 
-	if diff := cmp.Diff([]int{1, 2, 7, 8, 9}, getUploadsVisibleAtTip(t, dbconn.Global, 50)); diff != "" {
+	if diff := cmp.Diff([]int{1, 2, 7, 8, 9}, getUploadsVisibleAtTip(t, db, 50)); diff != "" {
 		t.Errorf("unexpected uploads visible at tip (-want +got):\n%s", diff)
 	}
 }
@@ -422,12 +436,12 @@ func TestCalculateVisibleUploadsIndexerName(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	dbtesting.SetupGlobalTestDB(t)
-	store := testStore()
+	db := dbtesting.GetDB(t)
+	store := testStore(db)
 
 	// This database has the following commit graph:
 	//
-	// [1] --+-- [2] --+-- [3] --+-- [4] --+-- 5
+	// [1] -- [2] -- [3] -- [4] -- 5
 
 	uploads := []Upload{
 		{ID: 1, Commit: makeCommit(1), Root: "root1/", Indexer: "idx1"},
@@ -439,7 +453,7 @@ func TestCalculateVisibleUploadsIndexerName(t *testing.T) {
 		{ID: 7, Commit: makeCommit(3), Root: "root3/", Indexer: "idx2"},
 		{ID: 8, Commit: makeCommit(4), Root: "root4/", Indexer: "idx2"},
 	}
-	insertUploads(t, dbconn.Global, uploads...)
+	insertUploads(t, db, uploads...)
 
 	graph := gitserver.ParseCommitGraph([]string{
 		strings.Join([]string{makeCommit(5), makeCommit(4)}, " "),
@@ -449,7 +463,11 @@ func TestCalculateVisibleUploadsIndexerName(t *testing.T) {
 		strings.Join([]string{makeCommit(1)}, " "),
 	})
 
-	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, makeCommit(5), 0, time.Time{}); err != nil {
+	refDescriptions := map[string]gitserver.RefDescription{
+		makeCommit(5): {IsDefaultBranch: true},
+	}
+
+	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, refDescriptions, time.Hour, time.Hour, 0, time.Time{}); err != nil {
 		t.Fatalf("unexpected error while calculating visible uploads: %s", err)
 	}
 
@@ -460,11 +478,11 @@ func TestCalculateVisibleUploadsIndexerName(t *testing.T) {
 		makeCommit(4): {1, 2, 3, 4, 5, 6, 7, 8},
 		makeCommit(5): {1, 2, 3, 4, 5, 6, 7, 8},
 	}
-	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, dbconn.Global, 50, keysOf(expectedVisibleUploads))); diff != "" {
+	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, db, 50, keysOf(expectedVisibleUploads))); diff != "" {
 		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
 	}
 
-	if diff := cmp.Diff([]int{1, 2, 3, 4, 5, 6, 7, 8}, getUploadsVisibleAtTip(t, dbconn.Global, 50)); diff != "" {
+	if diff := cmp.Diff([]int{1, 2, 3, 4, 5, 6, 7, 8}, getUploadsVisibleAtTip(t, db, 50)); diff != "" {
 		t.Errorf("unexpected uploads visible at tip (-want +got):\n%s", diff)
 	}
 }
@@ -473,21 +491,25 @@ func TestCalculateVisibleUploadsResetsDirtyFlag(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	dbtesting.SetupGlobalTestDB(t)
-	store := testStore()
+	db := dbtesting.GetDB(t)
+	store := testStore(db)
 
 	uploads := []Upload{
 		{ID: 1, Commit: makeCommit(1)},
 		{ID: 2, Commit: makeCommit(2)},
 		{ID: 3, Commit: makeCommit(3)},
 	}
-	insertUploads(t, dbconn.Global, uploads...)
+	insertUploads(t, db, uploads...)
 
 	graph := gitserver.ParseCommitGraph([]string{
 		strings.Join([]string{makeCommit(3), makeCommit(2)}, " "),
 		strings.Join([]string{makeCommit(2), makeCommit(1)}, " "),
 		strings.Join([]string{makeCommit(1)}, " "),
 	})
+
+	refDescriptions := map[string]gitserver.RefDescription{
+		makeCommit(3): {IsDefaultBranch: true},
+	}
 
 	for i := 0; i < 3; i++ {
 		// Set dirty token to 3
@@ -499,7 +521,7 @@ func TestCalculateVisibleUploadsResetsDirtyFlag(t *testing.T) {
 	now := time.Unix(1587396557, 0).UTC()
 
 	// Non-latest dirty token - should not clear flag
-	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, makeCommit(3), 2, now); err != nil {
+	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, refDescriptions, time.Hour, time.Hour, 2, now); err != nil {
 		t.Fatalf("unexpected error while calculating visible uploads: %s", err)
 	}
 	repositoryIDs, err := store.DirtyRepositories(context.Background())
@@ -511,7 +533,7 @@ func TestCalculateVisibleUploadsResetsDirtyFlag(t *testing.T) {
 	}
 
 	// Latest dirty token - should clear flag
-	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, makeCommit(3), 3, now); err != nil {
+	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, refDescriptions, time.Hour, time.Hour, 3, now); err != nil {
 		t.Fatalf("unexpected error while calculating visible uploads: %s", err)
 	}
 	repositoryIDs, err = store.DirtyRepositories(context.Background())
@@ -534,6 +556,207 @@ func TestCalculateVisibleUploadsResetsDirtyFlag(t *testing.T) {
 	}
 }
 
+func TestCalculateVisibleUploadsNonDefaultBranches(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	db := dbtesting.GetDB(t)
+	store := testStore(db)
+
+	// This database has the following commit graph:
+	//
+	//                +-- [08] ----- {09} --+
+	//                |                     |
+	// [01] -- {02} --+-- [03] --+-- {04} --+-- {05} -- [06] -- {07}
+	//                           |
+	//                           +--- 10 ------ [11] -- {12}
+	//
+	// 02: tag v1
+	// 04: tag v2
+	// 05: tag v3
+	// 07: tip of main branch
+	// 09: tip of branch feat1
+	// 12: tip of branch feat2
+
+	uploads := []Upload{
+		{ID: 1, Commit: makeCommit(1)},
+		{ID: 2, Commit: makeCommit(3)},
+		{ID: 3, Commit: makeCommit(6)},
+		{ID: 4, Commit: makeCommit(8)},
+		{ID: 5, Commit: makeCommit(11)},
+	}
+	insertUploads(t, db, uploads...)
+
+	graph := gitserver.ParseCommitGraph([]string{
+		strings.Join([]string{makeCommit(12), makeCommit(11)}, " "),
+		strings.Join([]string{makeCommit(11), makeCommit(10)}, " "),
+		strings.Join([]string{makeCommit(10), makeCommit(3)}, " "),
+		strings.Join([]string{makeCommit(7), makeCommit(6)}, " "),
+		strings.Join([]string{makeCommit(6), makeCommit(5)}, " "),
+		strings.Join([]string{makeCommit(5), makeCommit(4), makeCommit(9)}, " "),
+		strings.Join([]string{makeCommit(9), makeCommit(8)}, " "),
+		strings.Join([]string{makeCommit(8), makeCommit(2)}, " "),
+		strings.Join([]string{makeCommit(4), makeCommit(3)}, " "),
+		strings.Join([]string{makeCommit(3), makeCommit(2)}, " "),
+		strings.Join([]string{makeCommit(2), makeCommit(1)}, " "),
+		strings.Join([]string{makeCommit(1)}, " "),
+	})
+
+	t1 := time.Now().Add(-time.Minute * 90) // > 1 hr
+	t2 := time.Now().Add(-time.Minute * 30) // < 1 hr
+
+	refDescriptions := map[string]gitserver.RefDescription{
+		// stale
+		makeCommit(2): {Name: "v1", Type: gitserver.RefTypeTag, CreatedDate: t1},
+		makeCommit(9): {Name: "feat1", Type: gitserver.RefTypeBranch, CreatedDate: t1},
+
+		// fresh
+		makeCommit(4):  {Name: "v2", Type: gitserver.RefTypeTag, CreatedDate: t2},
+		makeCommit(5):  {Name: "v3", Type: gitserver.RefTypeTag, CreatedDate: t2},
+		makeCommit(7):  {Name: "main", Type: gitserver.RefTypeBranch, IsDefaultBranch: true, CreatedDate: t2},
+		makeCommit(12): {Name: "feat2", Type: gitserver.RefTypeBranch, CreatedDate: t2},
+	}
+
+	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, refDescriptions, time.Hour, time.Hour, 0, time.Time{}); err != nil {
+		t.Fatalf("unexpected error while calculating visible uploads: %s", err)
+	}
+
+	expectedVisibleUploads := map[string][]int{
+		makeCommit(1):  {1},
+		makeCommit(2):  {1},
+		makeCommit(3):  {2},
+		makeCommit(4):  {2},
+		makeCommit(5):  {2},
+		makeCommit(6):  {3},
+		makeCommit(7):  {3},
+		makeCommit(8):  {4},
+		makeCommit(9):  {4},
+		makeCommit(10): {2},
+		makeCommit(11): {5},
+		makeCommit(12): {5},
+	}
+	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, db, 50, keysOf(expectedVisibleUploads))); diff != "" {
+		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
+	}
+
+	if diff := cmp.Diff([]int{3}, getUploadsVisibleAtTip(t, db, 50)); diff != "" {
+		t.Errorf("unexpected uploads visible at tip (-want +got):\n%s", diff)
+	}
+
+	if diff := cmp.Diff([]int{2, 3, 5}, getProtectedUploads(t, db, 50)); diff != "" {
+		t.Errorf("unexpected protected uploads (-want +got):\n%s", diff)
+	}
+}
+
+func TestCalculateVisibleUploadsNonDefaultBranchesWithCustomRetentionConfiguration(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	db := dbtesting.GetDB(t)
+	store := testStore(db)
+
+	// This database has the following commit graph:
+	//
+	//                +-- [08] ----- {09} --+
+	//                |                     |
+	// [01] -- {02} --+-- [03] --+-- {04} --+-- {05} -- [06] -- {07}
+	//                           |
+	//                           +--- 10 ------ [11] -- {12}
+	//
+	// 02: tag v1
+	// 04: tag v2
+	// 05: tag v3
+	// 07: tip of main branch
+	// 09: tip of branch feat1
+	// 12: tip of branch feat2
+
+	uploads := []Upload{
+		{ID: 1, Commit: makeCommit(1)},
+		{ID: 2, Commit: makeCommit(3)},
+		{ID: 3, Commit: makeCommit(6)},
+		{ID: 4, Commit: makeCommit(8)},
+		{ID: 5, Commit: makeCommit(11)},
+	}
+	insertUploads(t, db, uploads...)
+
+	retentionConfigurationQuery := `
+		INSERT INTO lsif_retention_configuration (
+			id,
+			repository_id,
+			max_age_for_non_stale_branches_seconds,
+			max_age_for_non_stale_tags_seconds
+		) VALUES (
+			1,
+			50,
+			3600,
+			3600
+		)
+	`
+	if _, err := db.Exec(retentionConfigurationQuery); err != nil {
+		t.Fatalf("unexpected error inserting retention configuration: %s", err)
+	}
+
+	graph := gitserver.ParseCommitGraph([]string{
+		strings.Join([]string{makeCommit(12), makeCommit(11)}, " "),
+		strings.Join([]string{makeCommit(11), makeCommit(10)}, " "),
+		strings.Join([]string{makeCommit(10), makeCommit(3)}, " "),
+		strings.Join([]string{makeCommit(7), makeCommit(6)}, " "),
+		strings.Join([]string{makeCommit(6), makeCommit(5)}, " "),
+		strings.Join([]string{makeCommit(5), makeCommit(4), makeCommit(9)}, " "),
+		strings.Join([]string{makeCommit(9), makeCommit(8)}, " "),
+		strings.Join([]string{makeCommit(8), makeCommit(2)}, " "),
+		strings.Join([]string{makeCommit(4), makeCommit(3)}, " "),
+		strings.Join([]string{makeCommit(3), makeCommit(2)}, " "),
+		strings.Join([]string{makeCommit(2), makeCommit(1)}, " "),
+		strings.Join([]string{makeCommit(1)}, " "),
+	})
+
+	t1 := time.Now().Add(-time.Minute * 90) // > 1 hr
+	t2 := time.Now().Add(-time.Minute * 30) // < 1 hr
+
+	refDescriptions := map[string]gitserver.RefDescription{
+		// stale
+		makeCommit(2): {Name: "v1", Type: gitserver.RefTypeTag, CreatedDate: t1},
+		makeCommit(9): {Name: "feat1", Type: gitserver.RefTypeBranch, CreatedDate: t1},
+
+		// fresh
+		makeCommit(4):  {Name: "v2", Type: gitserver.RefTypeTag, CreatedDate: t2},
+		makeCommit(5):  {Name: "v3", Type: gitserver.RefTypeTag, CreatedDate: t2},
+		makeCommit(7):  {Name: "main", Type: gitserver.RefTypeBranch, IsDefaultBranch: true, CreatedDate: t2},
+		makeCommit(12): {Name: "feat2", Type: gitserver.RefTypeBranch, CreatedDate: t2},
+	}
+
+	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, refDescriptions, time.Second, time.Second, 0, time.Time{}); err != nil {
+		t.Fatalf("unexpected error while calculating visible uploads: %s", err)
+	}
+
+	expectedVisibleUploads := map[string][]int{
+		makeCommit(1):  {1},
+		makeCommit(2):  {1},
+		makeCommit(3):  {2},
+		makeCommit(4):  {2},
+		makeCommit(5):  {2},
+		makeCommit(6):  {3},
+		makeCommit(7):  {3},
+		makeCommit(8):  {4},
+		makeCommit(9):  {4},
+		makeCommit(10): {2},
+		makeCommit(11): {5},
+		makeCommit(12): {5},
+	}
+	if diff := cmp.Diff(expectedVisibleUploads, getVisibleUploads(t, db, 50, keysOf(expectedVisibleUploads))); diff != "" {
+		t.Errorf("unexpected visible uploads (-want +got):\n%s", diff)
+	}
+
+	if diff := cmp.Diff([]int{3}, getUploadsVisibleAtTip(t, db, 50)); diff != "" {
+		t.Errorf("unexpected uploads visible at tip (-want +got):\n%s", diff)
+	}
+
+	if diff := cmp.Diff([]int{2, 3, 5}, getProtectedUploads(t, db, 50)); diff != "" {
+		t.Errorf("unexpected protected uploads (-want +got):\n%s", diff)
+	}
+}
+
 func keysOf(m map[string][]int) (keys []string) {
 	for k := range m {
 		keys = append(keys, k)
@@ -547,24 +770,28 @@ func keysOf(m map[string][]int) (keys []string) {
 //
 
 func BenchmarkCalculateVisibleUploads(b *testing.B) {
-	dbtesting.SetupGlobalTestDB(b)
-	store := testStore()
+	db := dbtesting.GetDB(b)
+	store := testStore(db)
 
 	graph, err := readBenchmarkCommitGraph()
 	if err != nil {
 		b.Fatalf("unexpected error reading benchmark commit graph: %s", err)
 	}
 
+	refDescriptions := map[string]gitserver.RefDescription{
+		makeCommit(3): {IsDefaultBranch: true},
+	}
+
 	uploads, err := readBenchmarkCommitGraphView()
 	if err != nil {
 		b.Fatalf("unexpected error reading benchmark uploads: %s", err)
 	}
-	insertUploads(b, dbconn.Global, uploads...)
+	insertUploads(b, db, uploads...)
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, makeCommit(3), 0, time.Time{}); err != nil {
+	if err := store.CalculateVisibleUploads(context.Background(), 50, graph, refDescriptions, time.Hour, time.Hour, 0, time.Time{}); err != nil {
 		b.Fatalf("unexpected error while calculating visible uploads: %s", err)
 	}
 }
@@ -626,7 +853,7 @@ func readBenchmarkFile(path string) ([]byte, error) {
 	}
 	defer r.Close()
 
-	contents, err := ioutil.ReadAll(r)
+	contents, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}

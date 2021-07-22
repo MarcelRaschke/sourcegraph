@@ -360,162 +360,6 @@ This panel indicates gitserver client errors every 5m.
 
 <br />
 
-### Frontend: Precise code intelligence commit graph updater
-
-#### frontend: codeintel_commit_graph_queue_size
-
-This panel indicates commit graph queue size.
-
-> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#frontend-codeintel-commit-graph-queue-size).
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
-
-<br />
-
-#### frontend: codeintel_commit_graph_queue_growth_rate
-
-This panel indicates commit graph queue growth rate over 30m.
-
-> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#frontend-codeintel-commit-graph-queue-growth-rate).
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
-
-<br />
-
-#### frontend: codeintel_commit_graph_updater_99th_percentile_duration
-
-This panel indicates 99th percentile successful commit graph updater operation duration over 5m.
-
-> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#frontend-codeintel-commit-graph-updater-99th-percentile-duration).
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
-
-<br />
-
-#### frontend: codeintel_commit_graph_updater_errors
-
-This panel indicates commit graph updater errors every 5m.
-
-> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#frontend-codeintel-commit-graph-updater-errors).
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
-
-<br />
-
-### Frontend: Precise code intelligence janitor
-
-#### frontend: codeintel_janitor_errors
-
-This panel indicates janitor errors every 5m.
-
-> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#frontend-codeintel-janitor-errors).
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
-
-<br />
-
-#### frontend: codeintel_upload_records_removed
-
-This panel indicates upload records expired or deleted every 5m.
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
-
-<br />
-
-#### frontend: codeintel_index_records_removed
-
-This panel indicates index records expired or deleted every 5m.
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
-
-<br />
-
-#### frontend: codeintel_lsif_data_removed
-
-This panel indicates data for unreferenced upload records removed every 5m.
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
-
-<br />
-
-#### frontend: codeintel_background_upload_resets
-
-This panel indicates upload records re-queued (due to unresponsive worker) every 5m.
-
-> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#frontend-codeintel-background-upload-resets).
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
-
-<br />
-
-#### frontend: codeintel_background_upload_reset_failures
-
-This panel indicates upload records errored due to repeated reset every 5m.
-
-> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#frontend-codeintel-background-upload-reset-failures).
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
-
-<br />
-
-#### frontend: codeintel_background_index_resets
-
-This panel indicates index records re-queued (due to unresponsive indexer) every 5m.
-
-> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#frontend-codeintel-background-index-resets).
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
-
-<br />
-
-#### frontend: codeintel_background_index_reset_failures
-
-This panel indicates index records errored due to repeated reset every 5m.
-
-> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#frontend-codeintel-background-index-reset-failures).
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
-
-<br />
-
-### Frontend: Auto-indexing
-
-#### frontend: codeintel_indexing_99th_percentile_duration
-
-This panel indicates 99th percentile successful indexing operation duration over 5m.
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
-
-<br />
-
-#### frontend: codeintel_indexing_errors
-
-This panel indicates indexing errors every 5m.
-
-> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#frontend-codeintel-indexing-errors).
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
-
-<br />
-
-#### frontend: codeintel_autoindex_enqueuer_99th_percentile_duration
-
-This panel indicates 99th percentile successful index enqueuer operation duration over 5m.
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
-
-<br />
-
-#### frontend: codeintel_autoindex_enqueuer_errors
-
-This panel indicates index enqueuer errors every 5m.
-
-> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#frontend-codeintel-autoindex-enqueuer-errors).
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
-
-<br />
-
 ### Frontend: Out of band migrations
 
 #### frontend: out_of_band_migrations_up_99th_percentile_duration
@@ -626,7 +470,93 @@ This panel indicates critical test alert metric.
 
 <br />
 
+### Frontend: Database connections
+
+#### frontend: max_open_conns
+
+This panel indicates maximum open.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### frontend: open_conns
+
+This panel indicates established.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### frontend: in_use
+
+This panel indicates used.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### frontend: idle
+
+This panel indicates idle.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### frontend: mean_blocked_seconds_per_conn_request
+
+This panel indicates mean blocked seconds per conn request.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#frontend-mean-blocked-seconds-per-conn-request).
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### frontend: closed_max_idle
+
+This panel indicates closed by SetMaxIdleConns.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### frontend: closed_max_lifetime
+
+This panel indicates closed by SetConnMaxLifetime.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### frontend: closed_max_idle_time
+
+This panel indicates closed by SetConnMaxIdleTime.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
 ### Frontend: Container monitoring (not available on server)
+
+#### frontend: container_missing
+
+This panel indicates container missing.
+
+This value is the number of times a container has not been seen for more than one minute. If you observe this
+value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+
+- **Kubernetes:**
+	- Determine if the pod was OOM killed using `kubectl describe pod (frontend|sourcegraph-frontend)` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p (frontend|sourcegraph-frontend)`.
+- **Docker Compose:**
+	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' (frontend|sourcegraph-frontend)` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the (frontend|sourcegraph-frontend) container in `docker-compose.yml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs (frontend|sourcegraph-frontend)` (note this will include logs from the previous and currently running container).
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
 
 #### frontend: container_cpu_usage
 
@@ -648,19 +578,12 @@ This panel indicates container memory usage by instance.
 
 <br />
 
-#### frontend: container_missing
+#### frontend: fs_io_operations
 
-This panel indicates container missing.
+This panel indicates filesystem reads and writes rate by instance over 1h.
 
-This value is the number of times a container has not been seen for more than one minute. If you observe this
-value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
-
-- **Kubernetes:**
-	- Determine if the pod was OOM killed using `kubectl describe pod (frontend|sourcegraph-frontend)` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p (frontend|sourcegraph-frontend)`.
-- **Docker Compose:**
-	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' (frontend|sourcegraph-frontend)` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the (frontend|sourcegraph-frontend) container in `docker-compose.yml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs (frontend|sourcegraph-frontend)` (note this will include logs from the previous and currently running container).
+This value indicates the number of filesystem read and write operations by containers of this service.
+When extremely high, this can indicate a resource usage problem, or can cause problems with the service itself, especially if high values or spikes correlate with {{CONTAINER_NAME}} issues.
 
 <sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
 
@@ -932,11 +855,21 @@ This panel indicates i/o write throughput.
 
 #### gitserver: running_git_commands
 
-This panel indicates git commands sent to each gitserver instance.
+This panel indicates git commands running on each gitserver instance.
 
 A high value signals load.
 
 > NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#gitserver-running-git-commands).
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### gitserver: git_commands_received
+
+This panel indicates rate of git commands received across all instances.
+
+per second rate per command across all instances
 
 <sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
 
@@ -988,7 +921,125 @@ This panel indicates frontend-internal API error responses every 5m by route.
 
 <br />
 
+### Git Server: Gitserver cleanup jobs
+
+#### gitserver: janitor_running
+
+This panel indicates if the janitor process is running.
+
+1, if the janitor process is currently running
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### gitserver: janitor_job_duration
+
+This panel indicates 95th percentile job run duration.
+
+95th percentile job run duration
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### gitserver: repos_removed
+
+This panel indicates repositories removed due to disk pressure.
+
+Repositories removed due to disk pressure
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+### Git Server: Database connections
+
+#### gitserver: max_open_conns
+
+This panel indicates maximum open.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### gitserver: open_conns
+
+This panel indicates established.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### gitserver: in_use
+
+This panel indicates used.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### gitserver: idle
+
+This panel indicates idle.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### gitserver: mean_blocked_seconds_per_conn_request
+
+This panel indicates mean blocked seconds per conn request.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#gitserver-mean-blocked-seconds-per-conn-request).
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### gitserver: closed_max_idle
+
+This panel indicates closed by SetMaxIdleConns.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### gitserver: closed_max_lifetime
+
+This panel indicates closed by SetConnMaxLifetime.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### gitserver: closed_max_idle_time
+
+This panel indicates closed by SetConnMaxIdleTime.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
 ### Git Server: Container monitoring (not available on server)
+
+#### gitserver: container_missing
+
+This panel indicates container missing.
+
+This value is the number of times a container has not been seen for more than one minute. If you observe this
+value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+
+- **Kubernetes:**
+	- Determine if the pod was OOM killed using `kubectl describe pod gitserver` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p gitserver`.
+- **Docker Compose:**
+	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' gitserver` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the gitserver container in `docker-compose.yml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs gitserver` (note this will include logs from the previous and currently running container).
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
 
 #### gitserver: container_cpu_usage
 
@@ -1005,24 +1056,6 @@ This panel indicates container cpu usage total (1m average) across all cores by 
 This panel indicates container memory usage by instance.
 
 > NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#gitserver-container-memory-usage).
-
-<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
-
-<br />
-
-#### gitserver: container_missing
-
-This panel indicates container missing.
-
-This value is the number of times a container has not been seen for more than one minute. If you observe this
-value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
-
-- **Kubernetes:**
-	- Determine if the pod was OOM killed using `kubectl describe pod gitserver` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p gitserver`.
-- **Docker Compose:**
-	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' gitserver` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the gitserver container in `docker-compose.yml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs gitserver` (note this will include logs from the previous and currently running container).
 
 <sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
 
@@ -1105,7 +1138,7 @@ This panel indicates maximum go garbage collection duration.
 
 <br />
 
-### Git Server: Kubernetes monitoring (ignore if using Docker Compose or server)
+### Git Server: Kubernetes monitoring (only available on Kubernetes)
 
 #### gitserver: pods_available_percentage
 
@@ -1135,6 +1168,24 @@ This panel indicates number of requests waiting on the global mutex.
 
 ### GitHub Proxy: Container monitoring (not available on server)
 
+#### github-proxy: container_missing
+
+This panel indicates container missing.
+
+This value is the number of times a container has not been seen for more than one minute. If you observe this
+value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+
+- **Kubernetes:**
+	- Determine if the pod was OOM killed using `kubectl describe pod github-proxy` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p github-proxy`.
+- **Docker Compose:**
+	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' github-proxy` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the github-proxy container in `docker-compose.yml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs github-proxy` (note this will include logs from the previous and currently running container).
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
 #### github-proxy: container_cpu_usage
 
 This panel indicates container cpu usage total (1m average) across all cores by instance.
@@ -1155,19 +1206,12 @@ This panel indicates container memory usage by instance.
 
 <br />
 
-#### github-proxy: container_missing
+#### github-proxy: fs_io_operations
 
-This panel indicates container missing.
+This panel indicates filesystem reads and writes rate by instance over 1h.
 
-This value is the number of times a container has not been seen for more than one minute. If you observe this
-value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
-
-- **Kubernetes:**
-	- Determine if the pod was OOM killed using `kubectl describe pod github-proxy` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p github-proxy`.
-- **Docker Compose:**
-	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' github-proxy` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the github-proxy container in `docker-compose.yml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs github-proxy` (note this will include logs from the previous and currently running container).
+This value indicates the number of filesystem read and write operations by containers of this service.
+When extremely high, this can indicate a resource usage problem, or can cause problems with the service itself, especially if high values or spikes correlate with {{CONTAINER_NAME}} issues.
 
 <sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
 
@@ -1597,7 +1641,93 @@ This panel indicates frontend-internal API error responses every 5m by route.
 
 <br />
 
+### Precise Code Intel Worker: Database connections
+
+#### precise-code-intel-worker: max_open_conns
+
+This panel indicates maximum open.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### precise-code-intel-worker: open_conns
+
+This panel indicates established.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### precise-code-intel-worker: in_use
+
+This panel indicates used.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### precise-code-intel-worker: idle
+
+This panel indicates idle.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### precise-code-intel-worker: mean_blocked_seconds_per_conn_request
+
+This panel indicates mean blocked seconds per conn request.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#precise-code-intel-worker-mean-blocked-seconds-per-conn-request).
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### precise-code-intel-worker: closed_max_idle
+
+This panel indicates closed by SetMaxIdleConns.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### precise-code-intel-worker: closed_max_lifetime
+
+This panel indicates closed by SetConnMaxLifetime.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### precise-code-intel-worker: closed_max_idle_time
+
+This panel indicates closed by SetConnMaxIdleTime.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
 ### Precise Code Intel Worker: Container monitoring (not available on server)
+
+#### precise-code-intel-worker: container_missing
+
+This panel indicates container missing.
+
+This value is the number of times a container has not been seen for more than one minute. If you observe this
+value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+
+- **Kubernetes:**
+	- Determine if the pod was OOM killed using `kubectl describe pod precise-code-intel-worker` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p precise-code-intel-worker`.
+- **Docker Compose:**
+	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' precise-code-intel-worker` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the precise-code-intel-worker container in `docker-compose.yml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs precise-code-intel-worker` (note this will include logs from the previous and currently running container).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
 
 #### precise-code-intel-worker: container_cpu_usage
 
@@ -1619,21 +1749,14 @@ This panel indicates container memory usage by instance.
 
 <br />
 
-#### precise-code-intel-worker: container_missing
+#### precise-code-intel-worker: fs_io_operations
 
-This panel indicates container missing.
+This panel indicates filesystem reads and writes rate by instance over 1h.
 
-This value is the number of times a container has not been seen for more than one minute. If you observe this
-value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+This value indicates the number of filesystem read and write operations by containers of this service.
+When extremely high, this can indicate a resource usage problem, or can cause problems with the service itself, especially if high values or spikes correlate with {{CONTAINER_NAME}} issues.
 
-- **Kubernetes:**
-	- Determine if the pod was OOM killed using `kubectl describe pod precise-code-intel-worker` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p precise-code-intel-worker`.
-- **Docker Compose:**
-	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' precise-code-intel-worker` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the precise-code-intel-worker container in `docker-compose.yml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs precise-code-intel-worker` (note this will include logs from the previous and currently running container).
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
 
 <br />
 
@@ -1719,6 +1842,8 @@ This panel indicates percentage pods available.
 
 <p class="subtitle">Periodically runs saved searches and instructs the frontend to send out notifications.</p>
 
+### Query Runner: Internal service requests
+
 #### query-runner: frontend_internal_api_error_responses
 
 This panel indicates frontend-internal API error responses every 5m by route.
@@ -1730,26 +1855,6 @@ This panel indicates frontend-internal API error responses every 5m by route.
 <br />
 
 ### Query Runner: Container monitoring (not available on server)
-
-#### query-runner: container_memory_usage
-
-This panel indicates container memory usage by instance.
-
-> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#query-runner-container-memory-usage).
-
-<sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
-
-<br />
-
-#### query-runner: container_cpu_usage
-
-This panel indicates container cpu usage total (1m average) across all cores by instance.
-
-> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#query-runner-container-cpu-usage).
-
-<sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
-
-<br />
 
 #### query-runner: container_missing
 
@@ -1766,6 +1871,37 @@ value change independent of deployment events (such as an upgrade), it could ind
 	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs query-runner` (note this will include logs from the previous and currently running container).
 
 <sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
+
+<br />
+
+#### query-runner: container_cpu_usage
+
+This panel indicates container cpu usage total (1m average) across all cores by instance.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#query-runner-container-cpu-usage).
+
+<sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
+
+<br />
+
+#### query-runner: container_memory_usage
+
+This panel indicates container memory usage by instance.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#query-runner-container-memory-usage).
+
+<sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
+
+<br />
+
+#### query-runner: fs_io_operations
+
+This panel indicates filesystem reads and writes rate by instance over 1h.
+
+This value indicates the number of filesystem read and write operations by containers of this service.
+When extremely high, this can indicate a resource usage problem, or can cause problems with the service itself, especially if high values or spikes correlate with {{CONTAINER_NAME}} issues.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
 
 <br />
 
@@ -1847,19 +1983,420 @@ This panel indicates percentage pods available.
 
 <br />
 
-## Repo Updater
+## Worker
 
-<p class="subtitle">Manages interaction with code hosts, instructs Gitserver to update repositories.</p>
+<p class="subtitle">Manages background processes.</p>
 
-#### repo-updater: frontend_internal_api_error_responses
+### Worker: Active jobs
+
+#### worker: worker_job_count
+
+This panel indicates number of worker instances running each job.
+
+The number of worker instances running each job type.
+It is necessary for each job type to be managed by at least one worker instance.
+
+
+<br />
+
+#### worker: worker_job_codeintel-janitor_count
+
+This panel indicates number of worker instances running the codeintel-janitor job.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-worker-job-codeintel-janitor-count).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: worker_job_codeintel-commitgraph_count
+
+This panel indicates number of worker instances running the codeintel-commitgraph job.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-worker-job-codeintel-commitgraph-count).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: worker_job_codeintel-auto-indexing_count
+
+This panel indicates number of worker instances running the codeintel-auto-indexing job.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-worker-job-codeintel-auto-indexing-count).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+### Worker: Precise code intelligence commit graph updater
+
+#### worker: codeintel_commit_graph_queue_size
+
+This panel indicates commit graph queue size.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-codeintel-commit-graph-queue-size).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: codeintel_commit_graph_queue_growth_rate
+
+This panel indicates commit graph queue growth rate over 30m.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-codeintel-commit-graph-queue-growth-rate).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: codeintel_commit_graph_updater_99th_percentile_duration
+
+This panel indicates 99th percentile successful commit graph updater operation duration over 5m.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-codeintel-commit-graph-updater-99th-percentile-duration).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: codeintel_commit_graph_updater_errors
+
+This panel indicates commit graph updater errors every 5m.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-codeintel-commit-graph-updater-errors).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+### Worker: Precise code intelligence janitor
+
+#### worker: codeintel_janitor_errors
+
+This panel indicates janitor errors every 5m.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-codeintel-janitor-errors).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: codeintel_upload_records_removed
+
+This panel indicates upload records expired or deleted every 5m.
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: codeintel_index_records_removed
+
+This panel indicates index records expired or deleted every 5m.
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: codeintel_lsif_data_removed
+
+This panel indicates data for unreferenced upload records removed every 5m.
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: codeintel_background_upload_resets
+
+This panel indicates upload records re-queued (due to unresponsive worker) every 5m.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-codeintel-background-upload-resets).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: codeintel_background_upload_reset_failures
+
+This panel indicates upload records errored due to repeated reset every 5m.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-codeintel-background-upload-reset-failures).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: codeintel_background_index_resets
+
+This panel indicates index records re-queued (due to unresponsive indexer) every 5m.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-codeintel-background-index-resets).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: codeintel_background_index_reset_failures
+
+This panel indicates index records errored due to repeated reset every 5m.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-codeintel-background-index-reset-failures).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+### Worker: Auto-indexing
+
+#### worker: codeintel_indexing_99th_percentile_duration
+
+This panel indicates 99th percentile successful indexing operation duration over 5m.
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: codeintel_indexing_errors
+
+This panel indicates indexing errors every 5m.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-codeintel-indexing-errors).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: codeintel_autoindex_enqueuer_99th_percentile_duration
+
+This panel indicates 99th percentile successful index enqueuer operation duration over 5m.
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: codeintel_autoindex_enqueuer_errors
+
+This panel indicates index enqueuer errors every 5m.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-codeintel-autoindex-enqueuer-errors).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+### Worker: Internal service requests
+
+#### worker: frontend_internal_api_error_responses
 
 This panel indicates frontend-internal API error responses every 5m by route.
 
-> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#repo-updater-frontend-internal-api-error-responses).
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-frontend-internal-api-error-responses).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+### Worker: Database connections
+
+#### worker: max_open_conns
+
+This panel indicates maximum open.
 
 <sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
 
 <br />
+
+#### worker: open_conns
+
+This panel indicates established.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### worker: in_use
+
+This panel indicates used.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### worker: idle
+
+This panel indicates idle.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### worker: mean_blocked_seconds_per_conn_request
+
+This panel indicates mean blocked seconds per conn request.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-mean-blocked-seconds-per-conn-request).
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### worker: closed_max_idle
+
+This panel indicates closed by SetMaxIdleConns.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### worker: closed_max_lifetime
+
+This panel indicates closed by SetConnMaxLifetime.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### worker: closed_max_idle_time
+
+This panel indicates closed by SetConnMaxIdleTime.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+### Worker: Container monitoring (not available on server)
+
+#### worker: container_missing
+
+This panel indicates container missing.
+
+This value is the number of times a container has not been seen for more than one minute. If you observe this
+value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+
+- **Kubernetes:**
+	- Determine if the pod was OOM killed using `kubectl describe pod worker` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p worker`.
+- **Docker Compose:**
+	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' worker` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the worker container in `docker-compose.yml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs worker` (note this will include logs from the previous and currently running container).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: container_cpu_usage
+
+This panel indicates container cpu usage total (1m average) across all cores by instance.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-container-cpu-usage).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: container_memory_usage
+
+This panel indicates container memory usage by instance.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-container-memory-usage).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: fs_io_operations
+
+This panel indicates filesystem reads and writes rate by instance over 1h.
+
+This value indicates the number of filesystem read and write operations by containers of this service.
+When extremely high, this can indicate a resource usage problem, or can cause problems with the service itself, especially if high values or spikes correlate with {{CONTAINER_NAME}} issues.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+### Worker: Provisioning indicators (not available on server)
+
+#### worker: provisioning_container_cpu_usage_long_term
+
+This panel indicates container cpu usage total (90th percentile over 1d) across all cores by instance.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-provisioning-container-cpu-usage-long-term).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: provisioning_container_memory_usage_long_term
+
+This panel indicates container memory usage (1d maximum) by instance.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-provisioning-container-memory-usage-long-term).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: provisioning_container_cpu_usage_short_term
+
+This panel indicates container cpu usage total (5m maximum) across all cores by instance.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-provisioning-container-cpu-usage-short-term).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: provisioning_container_memory_usage_short_term
+
+This panel indicates container memory usage (5m maximum) by instance.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-provisioning-container-memory-usage-short-term).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+### Worker: Golang runtime monitoring
+
+#### worker: go_goroutines
+
+This panel indicates maximum active goroutines.
+
+A high value here indicates a possible goroutine leak.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-go-goroutines).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+#### worker: go_gc_duration_seconds
+
+This panel indicates maximum go garbage collection duration.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-go-gc-duration-seconds).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+### Worker: Kubernetes monitoring (only available on Kubernetes)
+
+#### worker: pods_available_percentage
+
+This panel indicates percentage pods available.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#worker-pods-available-percentage).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
+## Repo Updater
+
+<p class="subtitle">Manages interaction with code hosts, instructs Gitserver to update repositories.</p>
 
 ### Repo Updater: Repositories
 
@@ -1867,7 +2404,7 @@ This panel indicates frontend-internal API error responses every 5m by route.
 
 This panel indicates time since last sync.
 
-A high value here indicates issues synchronizing repository permissions.
+A high value here indicates issues synchronizing repo metadata.
 If the value is persistently high, make sure all external services have valid tokens.
 
 <sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
@@ -1886,7 +2423,7 @@ This panel indicates time since oldest sync.
 
 #### repo-updater: src_repoupdater_syncer_sync_errors_total
 
-This panel indicates sync error rate.
+This panel indicates site level external service sync error rate.
 
 > NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#repo-updater-src-repoupdater-syncer-sync-errors-total).
 
@@ -1896,7 +2433,7 @@ This panel indicates sync error rate.
 
 #### repo-updater: syncer_sync_start
 
-This panel indicates sync was started.
+This panel indicates repo metadata sync was started.
 
 > NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#repo-updater-syncer-sync-start).
 
@@ -2129,11 +2666,11 @@ This panel indicates the total number of completed sync jobs.
 
 <br />
 
-#### repo-updater: repoupdater_errored_sync_jobs_total
+#### repo-updater: repoupdater_errored_sync_jobs_percentage
 
-This panel indicates the total number of errored sync jobs.
+This panel indicates the percentage of external services that have failed their most recent sync.
 
-> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#repo-updater-repoupdater-errored-sync-jobs-total).
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#repo-updater-repoupdater-errored-sync-jobs-percentage).
 
 <sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
 
@@ -2219,7 +2756,105 @@ Indicates how long we`re waiting on the rate limit once it has been exceeded
 
 <br />
 
+### Repo Updater: Internal service requests
+
+#### repo-updater: frontend_internal_api_error_responses
+
+This panel indicates frontend-internal API error responses every 5m by route.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#repo-updater-frontend-internal-api-error-responses).
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+### Repo Updater: Database connections
+
+#### repo-updater: max_open_conns
+
+This panel indicates maximum open.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### repo-updater: open_conns
+
+This panel indicates established.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### repo-updater: in_use
+
+This panel indicates used.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### repo-updater: idle
+
+This panel indicates idle.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### repo-updater: mean_blocked_seconds_per_conn_request
+
+This panel indicates mean blocked seconds per conn request.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#repo-updater-mean-blocked-seconds-per-conn-request).
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### repo-updater: closed_max_idle
+
+This panel indicates closed by SetMaxIdleConns.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### repo-updater: closed_max_lifetime
+
+This panel indicates closed by SetConnMaxLifetime.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### repo-updater: closed_max_idle_time
+
+This panel indicates closed by SetConnMaxIdleTime.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
 ### Repo Updater: Container monitoring (not available on server)
+
+#### repo-updater: container_missing
+
+This panel indicates container missing.
+
+This value is the number of times a container has not been seen for more than one minute. If you observe this
+value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+
+- **Kubernetes:**
+	- Determine if the pod was OOM killed using `kubectl describe pod repo-updater` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p repo-updater`.
+- **Docker Compose:**
+	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' repo-updater` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the repo-updater container in `docker-compose.yml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs repo-updater` (note this will include logs from the previous and currently running container).
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
 
 #### repo-updater: container_cpu_usage
 
@@ -2241,19 +2876,12 @@ This panel indicates container memory usage by instance.
 
 <br />
 
-#### repo-updater: container_missing
+#### repo-updater: fs_io_operations
 
-This panel indicates container missing.
+This panel indicates filesystem reads and writes rate by instance over 1h.
 
-This value is the number of times a container has not been seen for more than one minute. If you observe this
-value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
-
-- **Kubernetes:**
-	- Determine if the pod was OOM killed using `kubectl describe pod repo-updater` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p repo-updater`.
-- **Docker Compose:**
-	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' repo-updater` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the repo-updater container in `docker-compose.yml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs repo-updater` (note this will include logs from the previous and currently running container).
+This value indicates the number of filesystem read and write operations by containers of this service.
+When extremely high, this can indicate a resource usage problem, or can cause problems with the service itself, especially if high values or spikes correlate with {{CONTAINER_NAME}} issues.
 
 <sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
 
@@ -2361,6 +2989,8 @@ This panel indicates requests per second over 10m.
 
 <br />
 
+### Searcher: Internal service requests
+
 #### searcher: frontend_internal_api_error_responses
 
 This panel indicates frontend-internal API error responses every 5m by route.
@@ -2372,6 +3002,24 @@ This panel indicates frontend-internal API error responses every 5m by route.
 <br />
 
 ### Searcher: Container monitoring (not available on server)
+
+#### searcher: container_missing
+
+This panel indicates container missing.
+
+This value is the number of times a container has not been seen for more than one minute. If you observe this
+value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+
+- **Kubernetes:**
+	- Determine if the pod was OOM killed using `kubectl describe pod searcher` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p searcher`.
+- **Docker Compose:**
+	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' searcher` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the searcher container in `docker-compose.yml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs searcher` (note this will include logs from the previous and currently running container).
+
+<sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
+
+<br />
 
 #### searcher: container_cpu_usage
 
@@ -2393,21 +3041,14 @@ This panel indicates container memory usage by instance.
 
 <br />
 
-#### searcher: container_missing
+#### searcher: fs_io_operations
 
-This panel indicates container missing.
+This panel indicates filesystem reads and writes rate by instance over 1h.
 
-This value is the number of times a container has not been seen for more than one minute. If you observe this
-value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+This value indicates the number of filesystem read and write operations by containers of this service.
+When extremely high, this can indicate a resource usage problem, or can cause problems with the service itself, especially if high values or spikes correlate with {{CONTAINER_NAME}} issues.
 
-- **Kubernetes:**
-	- Determine if the pod was OOM killed using `kubectl describe pod searcher` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p searcher`.
-- **Docker Compose:**
-	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' searcher` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the searcher container in `docker-compose.yml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs searcher` (note this will include logs from the previous and currently running container).
-
-<sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
 
 <br />
 
@@ -2513,6 +3154,8 @@ This panel indicates current fetch queue size.
 
 <br />
 
+### Symbols: Internal service requests
+
 #### symbols: frontend_internal_api_error_responses
 
 This panel indicates frontend-internal API error responses every 5m by route.
@@ -2524,6 +3167,24 @@ This panel indicates frontend-internal API error responses every 5m by route.
 <br />
 
 ### Symbols: Container monitoring (not available on server)
+
+#### symbols: container_missing
+
+This panel indicates container missing.
+
+This value is the number of times a container has not been seen for more than one minute. If you observe this
+value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+
+- **Kubernetes:**
+	- Determine if the pod was OOM killed using `kubectl describe pod symbols` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p symbols`.
+- **Docker Compose:**
+	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' symbols` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the symbols container in `docker-compose.yml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs symbols` (note this will include logs from the previous and currently running container).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
 
 #### symbols: container_cpu_usage
 
@@ -2545,21 +3206,14 @@ This panel indicates container memory usage by instance.
 
 <br />
 
-#### symbols: container_missing
+#### symbols: fs_io_operations
 
-This panel indicates container missing.
+This panel indicates filesystem reads and writes rate by instance over 1h.
 
-This value is the number of times a container has not been seen for more than one minute. If you observe this
-value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+This value indicates the number of filesystem read and write operations by containers of this service.
+When extremely high, this can indicate a resource usage problem, or can cause problems with the service itself, especially if high values or spikes correlate with {{CONTAINER_NAME}} issues.
 
-- **Kubernetes:**
-	- Determine if the pod was OOM killed using `kubectl describe pod symbols` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p symbols`.
-- **Docker Compose:**
-	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' symbols` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the symbols container in `docker-compose.yml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs symbols` (note this will include logs from the previous and currently running container).
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
 
 <br />
 
@@ -2679,6 +3333,24 @@ This panel indicates syntax highlighter worker deaths every 5m.
 
 ### Syntect Server: Container monitoring (not available on server)
 
+#### syntect-server: container_missing
+
+This panel indicates container missing.
+
+This value is the number of times a container has not been seen for more than one minute. If you observe this
+value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+
+- **Kubernetes:**
+	- Determine if the pod was OOM killed using `kubectl describe pod syntect-server` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p syntect-server`.
+- **Docker Compose:**
+	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' syntect-server` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the syntect-server container in `docker-compose.yml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs syntect-server` (note this will include logs from the previous and currently running container).
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
 #### syntect-server: container_cpu_usage
 
 This panel indicates container cpu usage total (1m average) across all cores by instance.
@@ -2699,19 +3371,12 @@ This panel indicates container memory usage by instance.
 
 <br />
 
-#### syntect-server: container_missing
+#### syntect-server: fs_io_operations
 
-This panel indicates container missing.
+This panel indicates filesystem reads and writes rate by instance over 1h.
 
-This value is the number of times a container has not been seen for more than one minute. If you observe this
-value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
-
-- **Kubernetes:**
-	- Determine if the pod was OOM killed using `kubectl describe pod syntect-server` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p syntect-server`.
-- **Docker Compose:**
-	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' syntect-server` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the syntect-server container in `docker-compose.yml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs syntect-server` (note this will include logs from the previous and currently running container).
+This value indicates the number of filesystem read and write operations by containers of this service.
+When extremely high, this can indicate a resource usage problem, or can cause problems with the service itself, especially if high values or spikes correlate with {{CONTAINER_NAME}} issues.
 
 <sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
 
@@ -2775,6 +3440,56 @@ This panel indicates percentage pods available.
 
 <p class="subtitle">Indexes repositories and populates the search index.</p>
 
+#### zoekt-indexserver: repos_assigned
+
+This panel indicates total number of repos.
+
+Sudden changes should be caused by indexing configuration changes.
+
+<sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
+
+<br />
+
+#### zoekt-indexserver: repos_priorities
+
+This panel indicates total number of repos with priorities for ranking.
+
+Sudden changes should be caused by indexing configuration changes.
+
+<sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
+
+<br />
+
+#### zoekt-indexserver: repo_index_state
+
+This panel indicates indexing results over 5m (noop=no changes, empty=no branches to index).
+
+A persistent failing state indicates some repositories cannot be indexed, perhaps due to size and timeouts.
+
+<sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
+
+<br />
+
+#### zoekt-indexserver: repo_index_success_speed
+
+This panel indicates successful indexing durations.
+
+Latency increases can indicate bottlenecks in the indexserver.
+
+<sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
+
+<br />
+
+#### zoekt-indexserver: repo_index_fail_speed
+
+This panel indicates failed indexing durations.
+
+Failures happening after a long time indicates timeouts.
+
+<sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
+
+<br />
+
 #### zoekt-indexserver: average_resolve_revision_duration
 
 This panel indicates average resolve revision duration over 5m.
@@ -2786,6 +3501,24 @@ This panel indicates average resolve revision duration over 5m.
 <br />
 
 ### Zoekt Index Server: Container monitoring (not available on server)
+
+#### zoekt-indexserver: container_missing
+
+This panel indicates container missing.
+
+This value is the number of times a container has not been seen for more than one minute. If you observe this
+value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+
+- **Kubernetes:**
+	- Determine if the pod was OOM killed using `kubectl describe pod zoekt-indexserver` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p zoekt-indexserver`.
+- **Docker Compose:**
+	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' zoekt-indexserver` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the zoekt-indexserver container in `docker-compose.yml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs zoekt-indexserver` (note this will include logs from the previous and currently running container).
+
+<sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
+
+<br />
 
 #### zoekt-indexserver: container_cpu_usage
 
@@ -2802,24 +3535,6 @@ This panel indicates container cpu usage total (1m average) across all cores by 
 This panel indicates container memory usage by instance.
 
 > NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#zoekt-indexserver-container-memory-usage).
-
-<sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
-
-<br />
-
-#### zoekt-indexserver: container_missing
-
-This panel indicates container missing.
-
-This value is the number of times a container has not been seen for more than one minute. If you observe this
-value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
-
-- **Kubernetes:**
-	- Determine if the pod was OOM killed using `kubectl describe pod zoekt-indexserver` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p zoekt-indexserver`.
-- **Docker Compose:**
-	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' zoekt-indexserver` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the zoekt-indexserver container in `docker-compose.yml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs zoekt-indexserver` (note this will include logs from the previous and currently running container).
 
 <sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
 
@@ -2906,6 +3621,24 @@ This panel indicates indexed search request errors every 5m by code.
 
 ### Zoekt Web Server: Container monitoring (not available on server)
 
+#### zoekt-webserver: container_missing
+
+This panel indicates container missing.
+
+This value is the number of times a container has not been seen for more than one minute. If you observe this
+value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+
+- **Kubernetes:**
+	- Determine if the pod was OOM killed using `kubectl describe pod zoekt-webserver` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p zoekt-webserver`.
+- **Docker Compose:**
+	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' zoekt-webserver` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the zoekt-webserver container in `docker-compose.yml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs zoekt-webserver` (note this will include logs from the previous and currently running container).
+
+<sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
+
+<br />
+
 #### zoekt-webserver: container_cpu_usage
 
 This panel indicates container cpu usage total (1m average) across all cores by instance.
@@ -2921,24 +3654,6 @@ This panel indicates container cpu usage total (1m average) across all cores by 
 This panel indicates container memory usage by instance.
 
 > NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#zoekt-webserver-container-memory-usage).
-
-<sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
-
-<br />
-
-#### zoekt-webserver: container_missing
-
-This panel indicates container missing.
-
-This value is the number of times a container has not been seen for more than one minute. If you observe this
-value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
-
-- **Kubernetes:**
-	- Determine if the pod was OOM killed using `kubectl describe pod zoekt-webserver` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p zoekt-webserver`.
-- **Docker Compose:**
-	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' zoekt-webserver` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the zoekt-webserver container in `docker-compose.yml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs zoekt-webserver` (note this will include logs from the previous and currently running container).
 
 <sub>*Managed by the [Sourcegraph Search team](https://about.sourcegraph.com/handbook/engineering/search).*</sub>
 
@@ -3110,6 +3825,24 @@ This panel indicates prometheus scrapes rejected due to duplicate timestamps ove
 
 ### Prometheus: Container monitoring (not available on server)
 
+#### prometheus: container_missing
+
+This panel indicates container missing.
+
+This value is the number of times a container has not been seen for more than one minute. If you observe this
+value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+
+- **Kubernetes:**
+	- Determine if the pod was OOM killed using `kubectl describe pod prometheus` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p prometheus`.
+- **Docker Compose:**
+	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' prometheus` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the prometheus container in `docker-compose.yml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs prometheus` (note this will include logs from the previous and currently running container).
+
+<sub>*Managed by the [Sourcegraph Distribution team](https://about.sourcegraph.com/handbook/engineering/distribution).*</sub>
+
+<br />
+
 #### prometheus: container_cpu_usage
 
 This panel indicates container cpu usage total (1m average) across all cores by instance.
@@ -3130,21 +3863,14 @@ This panel indicates container memory usage by instance.
 
 <br />
 
-#### prometheus: container_missing
+#### prometheus: fs_io_operations
 
-This panel indicates container missing.
+This panel indicates filesystem reads and writes rate by instance over 1h.
 
-This value is the number of times a container has not been seen for more than one minute. If you observe this
-value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+This value indicates the number of filesystem read and write operations by containers of this service.
+When extremely high, this can indicate a resource usage problem, or can cause problems with the service itself, especially if high values or spikes correlate with {{CONTAINER_NAME}} issues.
 
-- **Kubernetes:**
-	- Determine if the pod was OOM killed using `kubectl describe pod prometheus` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p prometheus`.
-- **Docker Compose:**
-	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' prometheus` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the prometheus container in `docker-compose.yml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs prometheus` (note this will include logs from the previous and currently running container).
-
-<sub>*Managed by the [Sourcegraph Distribution team](https://about.sourcegraph.com/handbook/engineering/distribution).*</sub>
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
 
 <br />
 
@@ -3288,7 +4014,93 @@ This panel indicates frontend-internal API error responses every 5m by route.
 
 <br />
 
+### Executor Queue: Database connections
+
+#### executor-queue: max_open_conns
+
+This panel indicates maximum open.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### executor-queue: open_conns
+
+This panel indicates established.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### executor-queue: in_use
+
+This panel indicates used.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### executor-queue: idle
+
+This panel indicates idle.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### executor-queue: mean_blocked_seconds_per_conn_request
+
+This panel indicates mean blocked seconds per conn request.
+
+> NOTE: Alerts related to this panel are documented in the [alert solutions reference](./alert_solutions.md#executor-queue-mean-blocked-seconds-per-conn-request).
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### executor-queue: closed_max_idle
+
+This panel indicates closed by SetMaxIdleConns.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### executor-queue: closed_max_lifetime
+
+This panel indicates closed by SetConnMaxLifetime.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
+#### executor-queue: closed_max_idle_time
+
+This panel indicates closed by SetConnMaxIdleTime.
+
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
+
+<br />
+
 ### Executor Queue: Container monitoring (not available on server)
+
+#### executor-queue: container_missing
+
+This panel indicates container missing.
+
+This value is the number of times a container has not been seen for more than one minute. If you observe this
+value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+
+- **Kubernetes:**
+	- Determine if the pod was OOM killed using `kubectl describe pod executor-queue` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p executor-queue`.
+- **Docker Compose:**
+	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' executor-queue` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the executor-queue container in `docker-compose.yml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs executor-queue` (note this will include logs from the previous and currently running container).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
 
 #### executor-queue: container_cpu_usage
 
@@ -3310,21 +4122,14 @@ This panel indicates container memory usage by instance.
 
 <br />
 
-#### executor-queue: container_missing
+#### executor-queue: fs_io_operations
 
-This panel indicates container missing.
+This panel indicates filesystem reads and writes rate by instance over 1h.
 
-This value is the number of times a container has not been seen for more than one minute. If you observe this
-value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+This value indicates the number of filesystem read and write operations by containers of this service.
+When extremely high, this can indicate a resource usage problem, or can cause problems with the service itself, especially if high values or spikes correlate with {{CONTAINER_NAME}} issues.
 
-- **Kubernetes:**
-	- Determine if the pod was OOM killed using `kubectl describe pod executor-queue` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p executor-queue`.
-- **Docker Compose:**
-	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' executor-queue` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the executor-queue container in `docker-compose.yml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs executor-queue` (note this will include logs from the previous and currently running container).
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
 
 <br />
 
@@ -3518,6 +4323,24 @@ This panel indicates teardown command errors every 5m.
 
 ### Precise Code Intel Indexer: Container monitoring (not available on server)
 
+#### precise-code-intel-indexer: container_missing
+
+This panel indicates container missing.
+
+This value is the number of times a container has not been seen for more than one minute. If you observe this
+value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+
+- **Kubernetes:**
+	- Determine if the pod was OOM killed using `kubectl describe pod precise-code-intel-indexer` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p precise-code-intel-indexer`.
+- **Docker Compose:**
+	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' precise-code-intel-indexer` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the precise-code-intel-indexer container in `docker-compose.yml`.
+	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs precise-code-intel-indexer` (note this will include logs from the previous and currently running container).
+
+<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+
+<br />
+
 #### precise-code-intel-indexer: container_cpu_usage
 
 This panel indicates container cpu usage total (1m average) across all cores by instance.
@@ -3538,21 +4361,14 @@ This panel indicates container memory usage by instance.
 
 <br />
 
-#### precise-code-intel-indexer: container_missing
+#### precise-code-intel-indexer: fs_io_operations
 
-This panel indicates container missing.
+This panel indicates filesystem reads and writes rate by instance over 1h.
 
-This value is the number of times a container has not been seen for more than one minute. If you observe this
-value change independent of deployment events (such as an upgrade), it could indicate pods are being OOM killed or terminated for some other reasons.
+This value indicates the number of filesystem read and write operations by containers of this service.
+When extremely high, this can indicate a resource usage problem, or can cause problems with the service itself, especially if high values or spikes correlate with {{CONTAINER_NAME}} issues.
 
-- **Kubernetes:**
-	- Determine if the pod was OOM killed using `kubectl describe pod precise-code-intel-worker` (look for `OOMKilled: true`) and, if so, consider increasing the memory limit in the relevant `Deployment.yaml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `kubectl logs -p precise-code-intel-worker`.
-- **Docker Compose:**
-	- Determine if the pod was OOM killed using `docker inspect -f '{{json .State}}' precise-code-intel-worker` (look for `"OOMKilled":true`) and, if so, consider increasing the memory limit of the precise-code-intel-worker container in `docker-compose.yml`.
-	- Check the logs before the container restarted to see if there are `panic:` messages or similar using `docker logs precise-code-intel-worker` (note this will include logs from the previous and currently running container).
-
-<sub>*Managed by the [Sourcegraph Code-intelligence team](https://about.sourcegraph.com/handbook/engineering/code-intelligence).*</sub>
+<sub>*Managed by the [Sourcegraph Core application team](https://about.sourcegraph.com/handbook/engineering/core-application).*</sub>
 
 <br />
 

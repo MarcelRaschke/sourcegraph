@@ -8,28 +8,35 @@ import { getFullQuery, Toggles } from './Toggles'
 
 describe('Toggles', () => {
     describe('getFullQuery', () => {
+        const emptyVersionContext = undefined
         test('query without search context, case insensitive, literal', () => {
-            expect(getFullQuery('foo', '', false, SearchPatternType.literal)).toBe('foo patternType:literal')
+            expect(getFullQuery('foo', '', emptyVersionContext, false, SearchPatternType.literal)).toBe(
+                'foo patternType:literal'
+            )
         })
 
         test('query without search context, case sensitive, literal', () => {
-            expect(getFullQuery('foo', '', true, SearchPatternType.literal)).toBe('foo patternType:literal case:yes')
+            expect(getFullQuery('foo', '', emptyVersionContext, true, SearchPatternType.literal)).toBe(
+                'foo patternType:literal case:yes'
+            )
         })
 
         test('query without search context, case sensitive, regexp', () => {
-            expect(getFullQuery('foo', '', true, SearchPatternType.regexp)).toBe('foo patternType:regexp case:yes')
+            expect(getFullQuery('foo', '', emptyVersionContext, true, SearchPatternType.regexp)).toBe(
+                'foo patternType:regexp case:yes'
+            )
         })
 
         test('query with search context, case sensitive, regexp', () => {
-            expect(getFullQuery('foo', '@user1', true, SearchPatternType.regexp)).toBe(
+            expect(getFullQuery('foo', '@user1', emptyVersionContext, true, SearchPatternType.regexp)).toBe(
                 'context:@user1 foo patternType:regexp case:yes'
             )
         })
 
         test('query with existing search context, case sensitive, regexp', () => {
-            expect(getFullQuery('context:@user2 foo', '@user1', true, SearchPatternType.regexp)).toBe(
-                'context:@user2 foo patternType:regexp case:yes'
-            )
+            expect(
+                getFullQuery('context:@user2 foo', '@user1', emptyVersionContext, true, SearchPatternType.regexp)
+            ).toBe('context:@user2 foo patternType:regexp case:yes')
         })
     })
 
@@ -46,7 +53,6 @@ describe('Toggles', () => {
                         caseSensitive={false}
                         setCaseSensitivity={() => undefined}
                         settingsCascade={{ subjects: null, final: {} }}
-                        copyQueryButton={false}
                         versionContext={undefined}
                         selectedSearchContextSpec="global"
                         showSearchContext={false}
@@ -67,7 +73,6 @@ describe('Toggles', () => {
                         caseSensitive={false}
                         setCaseSensitivity={() => undefined}
                         settingsCascade={{ subjects: null, final: {} }}
-                        copyQueryButton={false}
                         versionContext={undefined}
                         selectedSearchContextSpec="global"
                         showSearchContext={false}
@@ -88,7 +93,6 @@ describe('Toggles', () => {
                         caseSensitive={false}
                         setCaseSensitivity={() => undefined}
                         settingsCascade={{ subjects: null, final: {} }}
-                        copyQueryButton={false}
                         versionContext={undefined}
                         selectedSearchContextSpec="global"
                         showSearchContext={false}

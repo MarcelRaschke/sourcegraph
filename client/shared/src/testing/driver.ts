@@ -176,7 +176,8 @@ export class Driver {
                                         !message
                                             .text()
                                             .includes('Warning: componentWillReceiveProps has been renamed') &&
-                                        !message.text().includes('React-Hot-Loader') &&
+                                        !message.text().includes('Download the Apollo DevTools') &&
+                                        !message.text().includes('debug') &&
                                         // These requests are expected to fail, we use them to check if the browser extension is installed.
                                         message.location().url !== 'chrome-extension://invalid/'
                                 ),
@@ -468,19 +469,26 @@ export class Driver {
     public async assertNonemptyLocalRefs(): Promise<void> {
         // verify active group is references
         await this.page.waitForXPath(
-            "//*[contains(@class, 'panel')]//*[contains(@tabindex, '0') and contains(text(), 'References')]"
+            "//*[contains(@class, 'panel')]//*[contains(@tabindex, '0')]//*[contains(text(), 'References')]"
         )
         // verify there are some references
-        await this.page.waitForSelector('.panel__tabs-content .file-match-children__item', { visible: true })
+        await this.page.waitForSelector('[data-testid="panel-tabs-content"] .file-match-children__item', {
+            visible: true,
+        })
     }
 
     public async assertNonemptyExternalRefs(): Promise<void> {
         // verify active group is references
         await this.page.waitForXPath(
-            "//*[contains(@class, 'panel')]//*[contains(@tabindex, '0') and contains(text(), 'References')]"
+            "//*[contains(@class, 'panel')]//*[contains(@tabindex, '0')]//*[contains(text(), 'References')]"
         )
         // verify there are some references
-        await this.page.waitForSelector('.panel__tabs-content .hierarchical-locations-view__item', { visible: true })
+        await this.page.waitForSelector(
+            '[data-testid="panel-tabs-content"] [data-testid="hierarchical-locations-view-button"]',
+            {
+                visible: true,
+            }
+        )
     }
 
     private async makeRequest<T = void>({ url, init }: { url: string; init: RequestInit & Serializable }): Promise<T> {

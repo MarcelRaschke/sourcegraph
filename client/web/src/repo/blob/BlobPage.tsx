@@ -15,7 +15,13 @@ import { TelemetryProps } from '@sourcegraph/shared/src/telemetry/telemetryServi
 import { ThemeProps } from '@sourcegraph/shared/src/theme'
 import { ErrorLike, isErrorLike, asError } from '@sourcegraph/shared/src/util/errors'
 import { memoizeObservable } from '@sourcegraph/shared/src/util/memoizeObservable'
-import { AbsoluteRepoFile, makeRepoURI, ModeSpec, ParsedRepoURI, parseHash } from '@sourcegraph/shared/src/util/url'
+import {
+    AbsoluteRepoFile,
+    makeRepoURI,
+    ModeSpec,
+    ParsedRepoURI,
+    parseQueryAndHash,
+} from '@sourcegraph/shared/src/util/url'
 import { useEventObservable } from '@sourcegraph/shared/src/util/useObservable'
 
 import { AuthenticatedUser } from '../../auth'
@@ -211,7 +217,7 @@ export const BlobPage: React.FunctionComponent<Props> = props => {
             blobInfoOrError &&
             !isErrorLike(blobInfoOrError) &&
             blobInfoOrError.richHTML &&
-            !parseHash(props.location.hash).line
+            !parseQueryAndHash(props.location.search, props.location.hash).line
                 ? 'rendered'
                 : 'code'
     }
@@ -254,6 +260,7 @@ export const BlobPage: React.FunctionComponent<Props> = props => {
                 {context => (
                     <GoToRawAction
                         {...context}
+                        telemetryService={props.telemetryService}
                         key="raw-action"
                         repoName={repoName}
                         revision={props.revision}
@@ -306,11 +313,7 @@ export const BlobPage: React.FunctionComponent<Props> = props => {
                 </RepoHeaderContributionPortal>
             )}
             {blobInfoOrError.richHTML && renderMode === 'rendered' && (
-                <RenderedFile
-                    dangerousInnerHTML={blobInfoOrError.richHTML}
-                    location={props.location}
-                    history={props.history}
-                />
+                <RenderedFile dangerousInnerHTML={blobInfoOrError.richHTML} location={props.location} />
             )}
             {!blobInfoOrError.richHTML && blobInfoOrError.aborted && (
                 <div className="blob-page__aborted">

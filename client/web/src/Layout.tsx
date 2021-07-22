@@ -1,11 +1,9 @@
-import { Remote } from 'comlink'
 import React, { Suspense, useCallback, useEffect, useMemo } from 'react'
 import { Redirect, Route, RouteComponentProps, Switch, matchPath } from 'react-router'
 import { Observable } from 'rxjs'
 
 import { ResizablePanel } from '@sourcegraph/branded/src/components/panel/Panel'
 import { LoadingSpinner } from '@sourcegraph/react-loading-spinner'
-import { FlatExtensionHostAPI } from '@sourcegraph/shared/src/api/contract'
 import { ActivationProps } from '@sourcegraph/shared/src/components/activation/Activation'
 import { FetchFileParameters } from '@sourcegraph/shared/src/components/CodeExcerpt'
 import { ExtensionsControllerProps } from '@sourcegraph/shared/src/extensions/controller'
@@ -14,9 +12,9 @@ import { PlatformContextProps } from '@sourcegraph/shared/src/platform/context'
 import { SettingsCascadeProps } from '@sourcegraph/shared/src/settings/settings'
 import { TelemetryProps } from '@sourcegraph/shared/src/telemetry/telemetryService'
 import { ThemeProps } from '@sourcegraph/shared/src/theme'
-import { ErrorLike } from '@sourcegraph/shared/src/util/errors'
-import { parseHash } from '@sourcegraph/shared/src/util/url'
+import { parseQueryAndHash } from '@sourcegraph/shared/src/util/url'
 import { useObservable } from '@sourcegraph/shared/src/util/useObservable'
+import { useRedesignToggle } from '@sourcegraph/shared/src/util/useRedesignToggle'
 
 import { AuthenticatedUser, authRequired as authRequiredObservable } from './auth'
 import { CodeMonitoringProps } from './code-monitoring'
@@ -28,9 +26,9 @@ import { ExtensionAreaRoute } from './extensions/extension/ExtensionArea'
 import { ExtensionAreaHeaderNavItem } from './extensions/extension/ExtensionAreaHeader'
 import { ExtensionsAreaRoute } from './extensions/ExtensionsArea'
 import { ExtensionsAreaHeaderActionButton } from './extensions/ExtensionsAreaHeader'
+import { FeatureFlagProps } from './featureFlags/featureFlags'
 import { GlobalAlerts } from './global/GlobalAlerts'
 import { GlobalDebug } from './global/GlobalDebug'
-import { SearchPatternType } from './graphql-operations'
 import { KeyboardShortcutsProps, KEYBOARD_SHORTCUT_SHOW_HELP } from './keyboardShortcuts/keyboardShortcuts'
 import { KeyboardShortcutsHelp } from './keyboardShortcuts/KeyboardShortcutsHelp'
 import { SurveyToast } from './marketing/SurveyToast'
@@ -44,13 +42,12 @@ import { RepoHeaderActionButton } from './repo/RepoHeader'
 import { RepoRevisionContainerRoute } from './repo/RepoRevisionContainer'
 import { RepoSettingsAreaRoute } from './repo/settings/RepoSettingsArea'
 import { RepoSettingsSideBarGroup } from './repo/settings/RepoSettingsSidebar'
-import { LayoutRouteProps } from './routes'
+import { LayoutRouteProps, LayoutRouteComponentProps } from './routes'
 import { Settings } from './schema/settings.schema'
 import {
     parseSearchURLQuery,
     PatternTypeProps,
     CaseSensitivityProps,
-    CopyQueryButtonProps,
     RepogroupHomepageProps,
     OnboardingTourProps,
     HomePanelsProps,
@@ -69,7 +66,7 @@ import { UserAreaRoute } from './user/area/UserArea'
 import { UserAreaHeaderNavItem } from './user/area/UserAreaHeader'
 import { UserSettingsAreaRoute } from './user/settings/UserSettingsArea'
 import { UserSettingsSidebarItems } from './user/settings/UserSettingsSidebar'
-import { UserRepositoriesUpdateProps } from './util'
+import { UserExternalServicesOrRepositoriesUpdateProps } from './util'
 import { parseBrowserRepoURL } from './util/url'
 
 export interface LayoutProps
@@ -85,7 +82,6 @@ export interface LayoutProps
         ParsedSearchQueryProps,
         PatternTypeProps,
         CaseSensitivityProps,
-        CopyQueryButtonProps,
         MutableVersionContextProps,
         RepogroupHomepageProps,
         OnboardingTourProps,
@@ -94,7 +90,8 @@ export interface LayoutProps
         SearchStreamingProps,
         CodeMonitoringProps,
         SearchContextProps,
-        UserRepositoriesUpdateProps {
+        UserExternalServicesOrRepositoriesUpdateProps,
+        FeatureFlagProps {
     extensionAreaRoutes: readonly ExtensionAreaRoute[]
     extensionAreaHeaderNavItems: readonly ExtensionAreaHeaderNavItem[]
     extensionsAreaRoutes: readonly ExtensionsAreaRoute[]
@@ -127,18 +124,11 @@ export interface LayoutProps
     navbarSearchQueryState: QueryState
     onNavbarQueryChange: (queryState: QueryState) => void
     fetchHighlightedFileLineRanges: (parameters: FetchFileParameters, force?: boolean) => Observable<string[][]>
-    searchRequest: (
-        query: QueryState['query'],
-        version: string,
-        patternType: SearchPatternType,
-        versionContext: string | undefined,
-        extensionHostPromise: Promise<Remote<FlatExtensionHostAPI>>
-    ) => Observable<GQL.ISearchResults | ErrorLike>
 
     globbing: boolean
     showMultilineSearchConsole: boolean
+    showSearchNotebook: boolean
     showQueryBuilder: boolean
-    enableSmartQuery: boolean
     isSourcegraphDotCom: boolean
     showBatchChanges: boolean
     fetchSavedSearches: () => Observable<GQL.ISavedSearch[]>
@@ -150,6 +140,8 @@ export const Layout: React.FunctionComponent<LayoutProps> = props => {
     const isSearchRelatedPage = (routeMatch === '/:repoRevAndRest+' || routeMatch?.startsWith('/search')) ?? false
     const minimalNavLinks = routeMatch === '/cncf'
     const isSearchHomepage = props.location.pathname === '/search' && !parseSearchURLQuery(props.location.search)
+    const isSearchConsolePage = routeMatch?.startsWith('/search/console')
+    const isSearchNotebookPage = routeMatch?.startsWith('/search/notebook')
 
     // Update parsedSearchQuery, patternType, caseSensitivity, versionContext, and selectedSearchContextSpec based on current URL
     const {
@@ -225,6 +217,9 @@ export const Layout: React.FunctionComponent<LayoutProps> = props => {
         '/react-hooks',
         '/android',
         '/stanford',
+        '/stackstorm',
+        '/temporal',
+        '/o3de',
         '/cncf',
     ]
     const isRepogroupPage = repogroupPages.includes(props.location.pathname)
@@ -236,21 +231,25 @@ export const Layout: React.FunctionComponent<LayoutProps> = props => {
     const isSignInOrUp =
         props.location.pathname === '/sign-in' ||
         props.location.pathname === '/sign-up' ||
-        props.location.pathname === '/password-reset'
+        props.location.pathname === '/password-reset' ||
+        props.location.pathname === '/post-sign-up'
 
     // TODO Change this behavior when we have global focus management system
     // Need to know this for disable autofocus on nav search input
-    // and preserve autofocus for first textarea at survey page
-    const isSurveyPage = routeMatch === '/survey/:score?'
+    // and preserve autofocus for first textarea at survey page, creation UI etc.
+    const isSearchAutoFocusRequired = routeMatch === '/survey/:score?' || routeMatch === '/insights'
 
     const authRequired = useObservable(authRequiredObservable)
 
     const hideGlobalSearchInput: boolean =
         props.location.pathname === '/stats' ||
         props.location.pathname === '/search/query-builder' ||
-        props.location.pathname === '/search/console'
+        props.location.pathname === '/search/console' ||
+        props.location.pathname === '/search/notebook'
 
     const breadcrumbProps = useBreadcrumbs()
+
+    const [isRedesignEnabled] = useRedesignToggle()
 
     // Control browser extension discoverability animation here.
     // `Layout` is the lowest common ancestor of `UserNavItem` (target) and `RepoContainer` (trigger)
@@ -265,10 +264,11 @@ export const Layout: React.FunctionComponent<LayoutProps> = props => {
         return <Redirect to={{ ...props.location, pathname: props.location.pathname.slice(0, -1) }} />
     }
 
-    const context = {
+    const context: LayoutRouteComponentProps<any> = {
         ...props,
         ...breadcrumbProps,
         onExtensionAlertDismissed,
+        isRedesignEnabled,
     }
 
     return (
@@ -277,17 +277,19 @@ export const Layout: React.FunctionComponent<LayoutProps> = props => {
                 keyboardShortcutForShow={KEYBOARD_SHORTCUT_SHOW_HELP}
                 keyboardShortcuts={props.keyboardShortcuts}
             />
-            <GlobalAlerts
-                isSiteAdmin={!!props.authenticatedUser && props.authenticatedUser.siteAdmin}
-                settingsCascade={props.settingsCascade}
-                history={props.history}
-            />
+            <GlobalAlerts authenticatedUser={props.authenticatedUser} settingsCascade={props.settingsCascade} />
             {!isSiteInit && <SurveyToast authenticatedUser={props.authenticatedUser} />}
             {!isSiteInit && !isSignInOrUp && (
                 <GlobalNavbar
                     {...props}
                     authRequired={!!authRequired}
-                    isSearchRelatedPage={isSearchRelatedPage}
+                    showSearchBox={
+                        isSearchRelatedPage &&
+                        !isSearchHomepage &&
+                        !isRepogroupPage &&
+                        !isSearchConsolePage &&
+                        !isSearchNotebookPage
+                    }
                     variant={
                         hideGlobalSearchInput
                             ? 'no-search-input'
@@ -299,7 +301,7 @@ export const Layout: React.FunctionComponent<LayoutProps> = props => {
                     }
                     hideNavLinks={false}
                     minimalNavLinks={minimalNavLinks}
-                    isSearchAutoFocusRequired={!isSurveyPage}
+                    isSearchAutoFocusRequired={!isSearchAutoFocusRequired}
                     isExtensionAlertAnimating={isExtensionAlertAnimating}
                 />
             )}
@@ -313,7 +315,6 @@ export const Layout: React.FunctionComponent<LayoutProps> = props => {
                     }
                 >
                     <Switch>
-                        {/* eslint-disable react/jsx-no-bind */}
                         {props.routes.map(
                             ({ render, condition = () => true, ...route }) =>
                                 condition(context) && (
@@ -329,17 +330,17 @@ export const Layout: React.FunctionComponent<LayoutProps> = props => {
                                     />
                                 )
                         )}
-                        {/* eslint-enable react/jsx-no-bind */}
                     </Switch>
                 </Suspense>
             </ErrorBoundary>
-            {parseHash(props.location.hash).viewState && props.location.pathname !== '/sign-in' && (
-                <ResizablePanel
-                    {...props}
-                    repoName={`git://${parseBrowserRepoURL(props.location.pathname).repoName}`}
-                    fetchHighlightedFileLineRanges={fetchHighlightedFileLineRanges}
-                />
-            )}
+            {parseQueryAndHash(props.location.search, props.location.hash).viewState &&
+                props.location.pathname !== '/sign-in' && (
+                    <ResizablePanel
+                        {...props}
+                        repoName={`git://${parseBrowserRepoURL(props.location.pathname).repoName}`}
+                        fetchHighlightedFileLineRanges={fetchHighlightedFileLineRanges}
+                    />
+                )}
             <GlobalContributions
                 key={3}
                 extensionsController={props.extensionsController}

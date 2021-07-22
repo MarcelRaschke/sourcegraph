@@ -1,8 +1,8 @@
 .search-result-match {
     text-decoration: none; // don't use cascading link style
     display: flex;
-    align-items: center;
-    padding: 0.25rem 0;
+    align-items: flex-start;
+    padding: 0.5rem 0;
     overflow-x: auto;
     overflow-y: hidden;
 
@@ -17,6 +17,13 @@
 
     &:not(:first-child) {
         border-top: 1px solid var(--border-color);
+    }
+
+    .theme-redesign & {
+        background-color: var(--code-bg);
+        border: 1px solid var(--border-color-2);
+        border-radius: var(--border-radius);
+        padding: 0.25rem 0;
     }
 
     pre,
@@ -80,6 +87,10 @@
         padding-left: 0.5rem;
         padding-right: 0;
         color: var(--body-color);
+
+        .theme-redesign & {
+            padding: 0 0.5rem;
+        }
 
         table {
             margin-bottom: 0 !important; // Override docsite Markdown table CSS. A currently open PR removes that CSS and lets us remove this override.

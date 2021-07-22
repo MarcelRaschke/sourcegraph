@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/gitserver"
@@ -189,7 +189,7 @@ func doLogDiffSearchStream(ctx context.Context, repo api.RepoName, opt RawLogDif
 	defer func() {
 		// We do best-effort in case of timeout. So we clear out the error and
 		// indicate the results are incomplete.
-		if err != nil && errors.Is(err, context.DeadlineExceeded) {
+		if errors.Is(err, context.DeadlineExceeded) {
 			c <- LogCommitSearchEvent{Complete: false}
 			complete = false
 			err = nil
@@ -226,17 +226,17 @@ func doLogDiffSearchStream(ctx context.Context, repo api.RepoName, opt RawLogDif
 		}
 	}
 	if opt.FormatArgs != nil && !isValidRawLogDiffSearchFormatArgs(opt.FormatArgs) {
-		return false, fmt.Errorf("invalid FormatArgs: %q", opt.FormatArgs)
+		return false, errors.Errorf("invalid FormatArgs: %q", opt.FormatArgs)
 	}
 	for _, arg := range opt.Args {
 		if arg == "--" {
-			return false, fmt.Errorf("invalid Args (must not contain \"--\" element): %q", opt.Args)
+			return false, errors.Errorf("invalid Args (must not contain \"--\" element): %q", opt.Args)
 		}
 	}
 
 	if opt.Query.IsCaseSensitive != opt.Paths.IsCaseSensitive {
 		// These options can't be set separately in `git log`, so fail.
-		return false, fmt.Errorf("invalid options: Query.IsCaseSensitive != Paths.IsCaseSensitive")
+		return false, errors.Errorf("invalid options: Query.IsCaseSensitive != Paths.IsCaseSensitive")
 	}
 
 	// We do a search with git log returning just the commits (and source sha).
@@ -294,7 +294,7 @@ func rawLogSearchCmd(ctx context.Context, repo api.RepoName, opt RawLogDiffSearc
 	args := []string{"log"}
 	args = append(args, opt.Args...)
 	if !isAllowedGitCmd(args) {
-		return nil, fmt.Errorf("command failed: %q is not a allowed git command", args)
+		return nil, errors.Errorf("command failed: %q is not a allowed git command", args)
 	}
 
 	// TODO(keegan 2021-02-04) Now that git log directly supports a format
@@ -361,7 +361,8 @@ func rawShowSearch(ctx context.Context, repo api.RepoName, opt RawLogDiffSearchO
 		commitOIDs[i] = c.sha1
 	}
 	showArgs := append([]string{}, "show")
-	showArgs = append(showArgs, "--no-patch") // will be overridden if opt.FormatArgs has --patch
+	showArgs = append(showArgs, "--no-patch")  // will be overridden if opt.FormatArgs has --patch
+	showArgs = append(showArgs, "--no-prefix") // do not prefix file names with a/ and b/
 	showArgs = append(showArgs, opt.FormatArgs...)
 	showArgs = append(showArgs, commitOIDs...)
 	// Need --patch (TODO(sqs): or just --raw, which is smaller) if we are filtering by file paths,
@@ -371,9 +372,8 @@ func rawShowSearch(ctx context.Context, repo api.RepoName, opt RawLogDiffSearchO
 	if hasPathFilters {
 		showArgs = append(showArgs, "--patch")
 	}
-	showArgs = append(showArgs, logDiffCommonArgs(opt)...)
 	if !isAllowedGitCmd(showArgs) {
-		return nil, false, fmt.Errorf("command failed: %q is not a allowed git command", showArgs)
+		return nil, false, errors.Errorf("command failed: %q is not a allowed git command", showArgs)
 	}
 	showCmd := gitserver.DefaultClient.Command("git", showArgs...)
 	showCmd.Repo = repo

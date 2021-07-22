@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/backend"
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/batches/rewirer"
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/batches/store"
 	btypes "github.com/sourcegraph/sourcegraph/enterprise/internal/batches/types"
 	"github.com/sourcegraph/sourcegraph/internal/actor"
+	"github.com/sourcegraph/sourcegraph/internal/database/locker"
 	"github.com/sourcegraph/sourcegraph/internal/trace"
 )
 
@@ -34,6 +35,8 @@ type ApplyBatchChangeOpts struct {
 	// When FailIfBatchChangeExists is true, ApplyBatchChange will fail if a batch change
 	// matching the given batch spec already exists.
 	FailIfBatchChangeExists bool
+
+	PublicationStates UiPublicationStates
 }
 
 func (o ApplyBatchChangeOpts) String() string {
@@ -60,7 +63,7 @@ func (s *Service) ApplyBatchChange(ctx context.Context, opts ApplyBatchChangeOpt
 	}
 
 	// 🚨 SECURITY: Only site-admins or the creator of batchSpec can apply it.
-	if err := backend.CheckSiteAdminOrSameUser(ctx, batchSpec.UserID); err != nil {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, s.store.DB(), batchSpec.UserID); err != nil {
 		return nil, err
 	}
 
@@ -92,15 +95,27 @@ func (s *Service) ApplyBatchChange(ctx context.Context, opts ApplyBatchChangeOpt
 	// codehost while we're applying a new batch spec.
 	// This is blocking, because the changeset rows currently being processed by the
 	// reconciler are locked.
-	if err := s.store.CancelQueuedBatchChangeChangesets(ctx, batchChange.ID); err != nil {
-		return batchChange, nil
+	l := locker.NewWithDB(s.store.DB(), "batches_apply")
+	locked, unlock, err := l.Lock(ctx, int(batchChange.ID), false)
+	if err != nil {
+		return nil, err
 	}
+	if !locked {
+		return nil, errors.New("batch change locked by other user applying batch spec")
+	}
+	defer func() {
+		err = unlock(err)
+	}()
 
 	tx, err := s.store.Transact(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { err = tx.Done(err) }()
+
+	if err := tx.CancelQueuedBatchChangeChangesets(ctx, batchChange.ID); err != nil {
+		return batchChange, nil
+	}
 
 	if batchChange.ID == 0 {
 		if err := tx.CreateBatchChange(ctx, batchChange); err != nil {
@@ -131,8 +146,18 @@ func (s *Service) ApplyBatchChange(ctx context.Context, opts ApplyBatchChangeOpt
 		return nil, err
 	}
 
+	// Prepare the UI publication states. We need to do this within the
+	// transaction to avoid conflicting writes to the changeset specs.
+	if err := opts.PublicationStates.prepareAndValidate(mappings); err != nil {
+		return nil, err
+	}
+
 	// Upsert all changesets.
 	for _, changeset := range changesets {
+		if state := opts.PublicationStates.get(changeset.CurrentSpecID); state != nil {
+			changeset.UiPublicationState = state
+		}
+
 		if err := tx.UpsertChangeset(ctx, changeset); err != nil {
 			return nil, err
 		}

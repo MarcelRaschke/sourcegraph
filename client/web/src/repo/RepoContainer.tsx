@@ -1,6 +1,8 @@
+import classNames from 'classnames'
 import * as H from 'history'
 import { escapeRegExp } from 'lodash'
 import AlertCircleIcon from 'mdi-react/AlertCircleIcon'
+import ChevronDownIcon from 'mdi-react/ChevronDownIcon'
 import MapSearchIcon from 'mdi-react/MapSearchIcon'
 import MenuDownIcon from 'mdi-react/MenuDownIcon'
 import SourceRepositoryIcon from 'mdi-react/SourceRepositoryIcon'
@@ -25,35 +27,32 @@ import { VersionContextProps } from '@sourcegraph/shared/src/search/util'
 import { SettingsCascadeProps } from '@sourcegraph/shared/src/settings/settings'
 import { TelemetryProps } from '@sourcegraph/shared/src/telemetry/telemetryService'
 import { ThemeProps } from '@sourcegraph/shared/src/theme'
+import { isFirefox } from '@sourcegraph/shared/src/util/browserDetection'
 import { asError, ErrorLike, isErrorLike } from '@sourcegraph/shared/src/util/errors'
 import { repeatUntil } from '@sourcegraph/shared/src/util/rxjs/repeatUntil'
 import { encodeURIPathComponent, makeRepoURI } from '@sourcegraph/shared/src/util/url'
 import { useLocalStorage } from '@sourcegraph/shared/src/util/useLocalStorage'
 import { useObservable } from '@sourcegraph/shared/src/util/useObservable'
+import { useRedesignToggle } from '@sourcegraph/shared/src/util/useRedesignToggle'
 
 import { AuthenticatedUser } from '../auth'
 import { ErrorMessage } from '../components/alerts'
 import { BreadcrumbSetters, BreadcrumbsProps } from '../components/Breadcrumbs'
 import { ErrorBoundary } from '../components/ErrorBoundary'
+import { FuzzyFinder } from '../components/fuzzyFinder/FuzzyFinder'
 import { HeroPage } from '../components/HeroPage'
 import { ActionItemsBarProps, useWebActionItems } from '../extensions/components/ActionItemsBar'
 import { ExternalLinkFields, RepositoryFields } from '../graphql-operations'
 import { IS_CHROME } from '../marketing/util'
 import { Settings } from '../schema/settings.schema'
-import {
-    CaseSensitivityProps,
-    CopyQueryButtonProps,
-    PatternTypeProps,
-    SearchContextProps,
-    searchQueryForRepoRevision,
-} from '../search'
+import { CaseSensitivityProps, PatternTypeProps, SearchContextProps, searchQueryForRepoRevision } from '../search'
 import { QueryState } from '../search/helpers'
 import { browserExtensionInstalled } from '../tracking/analyticsUtils'
 import { RouteDescriptor } from '../util/contributions'
 import { parseBrowserRepoURL } from '../util/url'
 
 import { GoToCodeHostAction } from './actions/GoToCodeHostAction'
-import { InstallBrowserExtensionAlert } from './actions/InstallBrowserExtensionAlert'
+import { InstallBrowserExtensionAlert, isFirefoxCampaignActive } from './actions/InstallBrowserExtensionAlert'
 import { fetchFileExternalLinks, fetchRepository, resolveRevision } from './backend'
 import { RepoHeader, RepoHeaderActionButton, RepoHeaderContributionsLifecycleProps } from './RepoHeader'
 import { RepoHeaderContributionPortal } from './RepoHeaderContributionPortal'
@@ -79,7 +78,6 @@ export interface RepoContainerContext
         ActivationProps,
         PatternTypeProps,
         CaseSensitivityProps,
-        CopyQueryButtonProps,
         VersionContextProps,
         Pick<SearchContextProps, 'selectedSearchContextSpec'>,
         BreadcrumbSetters,
@@ -95,6 +93,8 @@ export interface RepoContainerContext
     onDidUpdateExternalLinks: (externalLinks: ExternalLinkFields[] | undefined) => void
 
     globbing: boolean
+
+    showBatchChanges: boolean
 }
 
 /** A sub-route of {@link RepoContainer}. */
@@ -115,7 +115,6 @@ interface RepoContainerProps
         ExtensionAlertProps,
         PatternTypeProps,
         CaseSensitivityProps,
-        CopyQueryButtonProps,
         VersionContextProps,
         Pick<SearchContextProps, 'selectedSearchContextSpec'>,
         BreadcrumbSetters,
@@ -129,10 +128,12 @@ interface RepoContainerProps
     onNavbarQueryChange: (state: QueryState) => void
     history: H.History
     globbing: boolean
+    showBatchChanges: boolean
 }
 
 export const HOVER_COUNT_KEY = 'hover-count'
 const HAS_DISMISSED_ALERT_KEY = 'has-dismissed-extension-alert'
+const HAS_DISMISSED_FIREFOX_ALERT_KEY = 'has-dismissed-firefox-addon-alert'
 
 export const HOVER_THRESHOLD = 5
 
@@ -151,6 +152,7 @@ export interface ExtensionAlertProps {
  * Renders a horizontal bar and content for a repository page.
  */
 export const RepoContainer: React.FunctionComponent<RepoContainerProps> = props => {
+    const [isRedesignEnabled] = useRedesignToggle()
     const { repoName, revision, rawRevision, filePath, commitRange, position, range } = parseBrowserRepoURL(
         location.pathname + location.search + location.hash
     )
@@ -221,41 +223,50 @@ export const RepoContainer: React.FunctionComponent<RepoContainerProps> = props 
                 key: 'repository',
                 element: (
                     <>
-                        <Link
-                            to={
-                                resolvedRevisionOrError && !isErrorLike(resolvedRevisionOrError)
-                                    ? resolvedRevisionOrError.rootTreeURL
-                                    : repoOrError.url
-                            }
-                            className="font-weight-bold text-nowrap test-repo-header-repo-link"
-                        >
-                            <SourceRepositoryIcon className="icon-inline" /> {displayRepoName(repoOrError.name)}
-                        </Link>
-                        <button
-                            type="button"
-                            id="repo-popover"
-                            className="btn btn-icon px-0"
-                            aria-label="Change repository"
-                        >
-                            <MenuDownIcon className="icon-inline" />
-                        </button>
+                        <div className={classNames('d-inline-flex', isRedesignEnabled && 'btn-group')}>
+                            <Link
+                                to={
+                                    resolvedRevisionOrError && !isErrorLike(resolvedRevisionOrError)
+                                        ? resolvedRevisionOrError.rootTreeURL
+                                        : repoOrError.url
+                                }
+                                className={classNames(
+                                    'text-nowrap test-repo-header-repo-link',
+                                    isRedesignEnabled ? 'btn btn-sm btn-outline-secondary' : 'font-weight-bold'
+                                )}
+                            >
+                                <SourceRepositoryIcon className="icon-inline" /> {displayRepoName(repoOrError.name)}
+                            </Link>
+                            <button
+                                type="button"
+                                id="repo-popover"
+                                className={classNames(
+                                    'btn repo-container__repo-change',
+                                    isRedesignEnabled ? 'btn-sm btn-outline-secondary' : 'btn-icon'
+                                )}
+                                aria-label="Change repository"
+                            >
+                                {isRedesignEnabled ? (
+                                    <ChevronDownIcon className="icon-inline" />
+                                ) : (
+                                    <MenuDownIcon className="icon-inline" />
+                                )}
+                            </button>
+                        </div>
                         <UncontrolledPopover
                             placement="bottom-start"
                             target="repo-popover"
                             trigger="legacy"
                             hideArrow={true}
+                            fade={false}
                             popperClassName="border-0"
                         >
-                            <RepositoriesPopover
-                                currentRepo={repoOrError.id}
-                                history={props.history}
-                                location={props.location}
-                            />
+                            <RepositoriesPopover currentRepo={repoOrError.id} />
                         </UncontrolledPopover>
                     </>
                 ),
             }
-        }, [repoOrError, resolvedRevisionOrError, props.history, props.location])
+        }, [repoOrError, resolvedRevisionOrError, isRedesignEnabled])
     )
 
     // Update the workspace roots service to reflect the current repo / resolved revision
@@ -351,10 +362,18 @@ export const RepoContainer: React.FunctionComponent<RepoContainerProps> = props 
         setHasDismissedPopover(true)
     }, [])
 
+    const [hasDismissedFirefoxAlert, setHasDismissedFirefoxAlert] = useLocalStorage(
+        HAS_DISMISSED_FIREFOX_ALERT_KEY,
+        false
+    )
+    const showFirefoxAddonAlert = isFirefox() && !hasDismissedFirefoxAlert && isFirefoxCampaignActive(Date.now())
+
     const onAlertDismissed = useCallback(() => {
         onExtensionAlertDismissed()
         setHasDismissedExtensionAlert(true)
-    }, [onExtensionAlertDismissed, setHasDismissedExtensionAlert])
+        // TEMPORARY
+        setHasDismissedFirefoxAlert(true)
+    }, [onExtensionAlertDismissed, setHasDismissedExtensionAlert, setHasDismissedFirefoxAlert])
 
     if (!repoOrError) {
         // Render nothing while loading
@@ -385,13 +404,27 @@ export const RepoContainer: React.FunctionComponent<RepoContainerProps> = props 
     }
 
     return (
-        <div className="repo-container test-repo-container w-100 d-flex flex-column">
-            {showExtensionAlert && (
+        <div className="repo-container test-repo-container w-100 d-flex flex-column action-items">
+            {!isErrorLike(props.settingsCascade.final) &&
+                props.settingsCascade.final?.experimentalFeatures?.fuzzyFinder &&
+                resolvedRevisionOrError &&
+                !isErrorLike(resolvedRevisionOrError) && (
+                    <FuzzyFinder
+                        repoName={repoName}
+                        commitID={resolvedRevisionOrError.commitID}
+                        caseInsensitiveFileCountThreshold={
+                            props.settingsCascade.final?.experimentalFeatures
+                                ?.fuzzyFinderCaseInsensitiveFileCountThreshold
+                        }
+                    />
+                )}
+            {(showExtensionAlert || showFirefoxAddonAlert) && (
                 <InstallBrowserExtensionAlert
                     isChrome={IS_CHROME}
                     onAlertDismissed={onAlertDismissed}
                     externalURLs={repoOrError.externalURLs}
                     codeHostIntegrationMessaging={codeHostIntegrationMessaging}
+                    showFirefoxAddonAlert={showFirefoxAddonAlert}
                 />
             )}
             <RepoHeader
@@ -438,13 +471,13 @@ export const RepoContainer: React.FunctionComponent<RepoContainerProps> = props 
             </RepoHeaderContributionPortal>
             <ErrorBoundary location={props.location}>
                 <Switch>
-                    {/* eslint-disable react/jsx-no-bind */}
                     {[
                         '',
                         ...(rawRevision ? [`@${rawRevision}`] : []), // must exactly match how the revision was encoded in the URL
                         '/-/blob',
                         '/-/tree',
                         '/-/commits',
+                        '/-/docs',
                     ].map(routePath => (
                         <Route
                             path={`${repoMatchURL}${routePath}`}
@@ -478,7 +511,6 @@ export const RepoContainer: React.FunctionComponent<RepoContainerProps> = props 
                             )
                     )}
                     <Route key="hardcoded-key" component={RepoPageNotFound} />
-                    {/* eslint-enable react/jsx-no-bind */}
                 </Switch>
             </ErrorBoundary>
         </div>

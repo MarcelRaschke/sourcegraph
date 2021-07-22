@@ -5,9 +5,8 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"io/fs"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,13 +16,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/inconshreveable/log15"
-	"github.com/pkg/errors"
 
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/gitserver/protocol"
 	"github.com/sourcegraph/sourcegraph/internal/types"
+	"github.com/sourcegraph/sourcegraph/internal/vcs"
 )
 
 // GitDir is an absolute path to a GIT_DIR.
@@ -212,7 +212,7 @@ func configureRemoteGitCommand(cmd *exec.Cmd, tlsConf *tlsConfig) {
 // writeTempFile writes data to the TempFile with pattern. Returns the path of
 // the tempfile.
 func writeTempFile(pattern string, data []byte) (path string, err error) {
-	f, err := ioutil.TempFile("", pattern)
+	f, err := os.CreateTemp("", pattern)
 	if err != nil {
 		return "", err
 	}
@@ -284,7 +284,7 @@ var repoLastChanged = func(dir GitDir) (time.Time, error) {
 //
 // The ref prefix `ref/<ref type>/` is stripped away from the returned
 // refs.
-var repoRemoteRefs = func(ctx context.Context, remoteURL *url.URL, prefix string) (map[string]string, error) {
+var repoRemoteRefs = func(ctx context.Context, remoteURL *vcs.URL, prefix string) (map[string]string, error) {
 	// The expected output of this git command is a list of:
 	// <commit hash> <ref name>
 	cmd := exec.Command("git", "ls-remote", remoteURL.String(), prefix+"*")
@@ -298,7 +298,7 @@ var repoRemoteRefs = func(ctx context.Context, remoteURL *url.URL, prefix string
 		if len(stderr) > 200 {
 			stderr = stderr[:200]
 		}
-		return nil, fmt.Errorf("git %s failed: %s (%q)", cmd.Args, err, stderr)
+		return nil, errors.Errorf("git %s failed: %s (%q)", cmd.Args, err, stderr)
 	}
 
 	refs := make(map[string]string)
@@ -310,12 +310,12 @@ var repoRemoteRefs = func(ctx context.Context, remoteURL *url.URL, prefix string
 
 		fields := strings.Fields(line)
 		if len(fields) != 2 {
-			return nil, fmt.Errorf("git %s failed (invalid output): %s", cmd.Args, line)
+			return nil, errors.Errorf("git %s failed (invalid output): %s", cmd.Args, line)
 		}
 
 		split := strings.SplitN(fields[1], "/", 3)
 		if len(split) != 3 {
-			return nil, fmt.Errorf("git %s failed (invalid refname): %s", cmd.Args, fields[1])
+			return nil, errors.Errorf("git %s failed (invalid refname): %s", cmd.Args, fields[1])
 		}
 
 		refs[split[2]] = fields[0]
@@ -543,7 +543,7 @@ func mapToLog15Ctx(m map[string]interface{}) []interface{} {
 // updateFileIfDifferent will atomically update the file if the contents are
 // different. If it does an update ok is true.
 func updateFileIfDifferent(path string, content []byte) (bool, error) {
-	current, err := ioutil.ReadFile(path)
+	current, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		// If the file doesn't exist we write a new file.
 		return false, err
@@ -554,7 +554,7 @@ func updateFileIfDifferent(path string, content []byte) (bool, error) {
 	}
 
 	// We write to a tempfile first to do the atomic update (via rename)
-	f, err := ioutil.TempFile(filepath.Dir(path), filepath.Base(path))
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path))
 	if err != nil {
 		return false, err
 	}
@@ -620,8 +620,8 @@ func fsync(path string) error {
 // filepath.Walk can return errors if we run into permission errors or a file
 // disappears between readdir and the stat of the file. In either case this
 // error can be ignored for best effort code.
-func bestEffortWalk(root string, walkFn func(path string, info os.FileInfo) error) error {
-	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+func bestEffortWalk(root string, walkFn func(path string, info fs.FileInfo) error) error {
+	return filepath.Walk(root, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}

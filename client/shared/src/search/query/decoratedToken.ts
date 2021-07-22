@@ -429,12 +429,7 @@ const mapRegexpMeta = (pattern: Pattern): DecoratedToken[] | undefined => {
     }
     // The AST is not necessarily traversed in increasing range. We need
     // to sort by increasing range because the ordering is significant to Monaco.
-    tokens.sort((left, right) => {
-        if (left.range.start < right.range.start) {
-            return -1
-        }
-        return 0
-    })
+    tokens.sort((left, right) => left.range.start - right.range.start)
     return coalescePatterns(tokens)
 }
 
@@ -1087,47 +1082,11 @@ const decoratedToMonaco = (token: DecoratedToken): Monaco.languages.IToken => {
     }
 }
 
-const toMonaco = (token: Token): Monaco.languages.IToken[] => {
-    switch (token.type) {
-        case 'filter': {
-            const monacoTokens: Monaco.languages.IToken[] = []
-            monacoTokens.push({
-                startIndex: token.field.range.start,
-                scopes: 'field',
-            })
-            if (token.value) {
-                monacoTokens.push({
-                    startIndex: token.value.range.start,
-                    scopes: 'identifier',
-                })
-            }
-            return monacoTokens
-        }
-        case 'whitespace':
-        case 'keyword':
-        case 'comment':
-            return [
-                {
-                    startIndex: token.range.start,
-                    scopes: token.type,
-                },
-            ]
-        default:
-            return [
-                {
-                    startIndex: token.range.start,
-                    scopes: 'identifier',
-                },
-            ]
-    }
-}
-
 /**
- * Returns the tokens in a scanned search query displayed in the Monaco query input. If the experimental
- * decorate flag is true, a list of {@link DecoratedToken} provides more contextual highlighting for patterns.
+ * Decorates tokens for contextual highlighting (e.g. for regexp metasyntax) and returns the tokens converted to Monaco token types.
  */
-export const getMonacoTokens = (tokens: Token[], toDecorate = false): Monaco.languages.IToken[] =>
-    toDecorate ? tokens.flatMap(token => decorate(token).map(decoratedToMonaco)) : tokens.flatMap(toMonaco)
+export const getMonacoTokens = (tokens: Token[]): Monaco.languages.IToken[] =>
+    tokens.flatMap(token => decorate(token).map(decoratedToMonaco))
 
 /**
  * Converts a zero-indexed, single-line {@link CharacterRange} to a Monaco {@link IRange}.

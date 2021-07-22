@@ -4,27 +4,31 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/inconshreveable/log15"
-	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
 
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/auth"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/auth/providers"
+	"github.com/sourcegraph/sourcegraph/cmd/frontend/envvar"
 	"github.com/sourcegraph/sourcegraph/internal/actor"
+	"github.com/sourcegraph/sourcegraph/internal/conf"
+	"github.com/sourcegraph/sourcegraph/internal/database"
+	"github.com/sourcegraph/sourcegraph/internal/database/dbutil"
 	"github.com/sourcegraph/sourcegraph/internal/env"
+	"github.com/sourcegraph/sourcegraph/internal/extsvc"
 	"github.com/sourcegraph/sourcegraph/internal/httpcli"
 	"github.com/sourcegraph/sourcegraph/schema"
 )
 
-func NewHandler(serviceType, authPrefix string, isAPIHandler bool, next http.Handler) http.Handler {
-	oauthFlowHandler := http.StripPrefix(authPrefix, newOAuthFlowHandler(serviceType))
+func NewHandler(db dbutil.DB, serviceType, authPrefix string, isAPIHandler bool, next http.Handler) http.Handler {
+	oauthFlowHandler := http.StripPrefix(authPrefix, newOAuthFlowHandler(db, serviceType))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Delegate to the auth flow handler
 		if !isAPIHandler && strings.HasPrefix(r.URL.Path, authPrefix+"/") {
@@ -56,7 +60,7 @@ func NewHandler(serviceType, authPrefix string, isAPIHandler bool, next http.Han
 	})
 }
 
-func newOAuthFlowHandler(serviceType string) http.Handler {
+func newOAuthFlowHandler(db dbutil.DB, serviceType string) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/login", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		id := req.URL.Query().Get("pc")
@@ -66,7 +70,15 @@ func newOAuthFlowHandler(serviceType string) http.Handler {
 			http.Error(w, "Misconfigured GitHub auth provider.", http.StatusInternalServerError)
 			return
 		}
-		p.Login.ServeHTTP(w, req)
+
+		extraScopes, err := getExtraScopes(req.Context(), db, serviceType)
+		if err != nil {
+			log15.Error("Getting extra OAuth scopes", "error", err)
+			http.Error(w, "Authentication failed. Try signing in again (and clearing cookies for the current site).", http.StatusInternalServerError)
+			return
+		}
+
+		p.Login(p.OAuth2Config(extraScopes...)).ServeHTTP(w, req)
 	}))
 	mux.Handle("/callback", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		state, err := DecodeState(req.URL.Query().Get("state"))
@@ -81,9 +93,37 @@ func newOAuthFlowHandler(serviceType string) http.Handler {
 			http.Error(w, "Authentication failed. Try signing in again (and clearing cookies for the current site). The error was: could not find provider that matches the OAuth state parameter.", http.StatusBadRequest)
 			return
 		}
-		p.Callback.ServeHTTP(w, req)
+		p.Callback(p.OAuth2Config()).ServeHTTP(w, req)
 	}))
 	return mux
+}
+
+// serviceType -> scopes
+var extraScopes = map[string][]string{
+	// We need `repo` scopes for reading private repos
+	extsvc.TypeGitHub: {"repo"},
+	// We need full `api` scope for cloning private repos
+	extsvc.TypeGitLab: {"api"},
+}
+
+func getExtraScopes(ctx context.Context, db dbutil.DB, serviceType string) ([]string, error) {
+	// Extra scopes are only needed on Sourcegraph.com
+	if !envvar.SourcegraphDotComMode() {
+		return nil, nil
+	}
+	scopes, ok := extraScopes[serviceType]
+	if !ok {
+		return nil, nil
+	}
+
+	mode, err := database.Users(db).CurrentUserAllowedExternalServices(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if mode != conf.ExternalServiceModeAll {
+		return nil, nil
+	}
+	return scopes, nil
 }
 
 // withOAuthExternalHTTPClient updates client such that the
@@ -111,7 +151,7 @@ func previewAndDuplicateReader(reader io.ReadCloser) (preview string, freshReade
 		return "", reader, nil
 	}
 	defer reader.Close()
-	b, err := ioutil.ReadAll(reader)
+	b, err := io.ReadAll(reader)
 	if err != nil {
 		return "", nil, err
 	}
@@ -119,7 +159,7 @@ func previewAndDuplicateReader(reader io.ReadCloser) (preview string, freshReade
 	if len(preview) > 1000 {
 		preview = preview[:1000]
 	}
-	return preview, ioutil.NopCloser(bytes.NewReader(b)), nil
+	return preview, io.NopCloser(bytes.NewReader(b)), nil
 }
 
 func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {

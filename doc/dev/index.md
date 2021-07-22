@@ -17,6 +17,7 @@ A hands-on introduction for setting up your local development environment.
 - [Step 4: Get the code](getting-started/quickstart_4_clone_repository.md)
 - [Step 5: Configure HTTPS reverse proxy](getting-started/quickstart_5_configure_https_reverse_proxy.md)
 - [Step 6: Start the server](getting-started/quickstart_6_start_server.md)
+- [Step 7: Additional resources](getting-started/quickstart_7_additional_resources.md)
 
 ## [How-to guides](how-to/index.md)
 
@@ -32,6 +33,7 @@ Guides to help with troubleshooting, configuring test instances, debugging, and 
 ### New features
 
 - [How to add support for a language](how-to/add_support_for_a_language.md)
+- [How to use feature flags](how-to/use_feature_flags.md)
 
 ### [Troubleshooting](how-to/troubleshooting_local_development.md)
 
@@ -44,6 +46,7 @@ Guides to help with troubleshooting, configuring test instances, debugging, and 
 - [Running out of disk space](how-to/troubleshooting_local_development.md#running-out-of-disk-space)
 - [Certificate expiry](how-to/troubleshooting_local_development.md#certificate-expiry)
 - [CPU/RAM/bandwidth/battery usage](how-to/troubleshooting_local_development.md#cpurambandwidthbattery-usage)
+- [Permission errors for Grafana and Prometheus](how-to/troubleshooting_local_development.md#permission-errors-for-grafana-and-prometheus-containers)
 
 ### Implementing Sourcegraph
 

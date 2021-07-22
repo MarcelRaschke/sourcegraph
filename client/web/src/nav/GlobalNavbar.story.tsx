@@ -11,7 +11,11 @@ import { AuthenticatedUser } from '../auth'
 import { WebStory } from '../components/WebStory'
 import { SearchPatternType } from '../graphql-operations'
 import { SourcegraphContext } from '../jscontext'
-import { mockFetchAutoDefinedSearchContexts, mockFetchSearchContexts } from '../searchContexts/testHelpers'
+import {
+    mockFetchAutoDefinedSearchContexts,
+    mockFetchSearchContexts,
+    mockGetUserSearchContextNamespaces,
+} from '../searchContexts/testHelpers'
 import { ThemePreference } from '../theme'
 
 import { GlobalNavbar } from './GlobalNavbar'
@@ -24,7 +28,7 @@ const defaultProps = (
     props: ThemeProps
 ): Omit<
     React.ComponentProps<typeof GlobalNavbar>,
-    'authenticatedUser' | 'variant' | 'isSearchRelatedPage' | 'authRequired'
+    'authenticatedUser' | 'variant' | 'showSearchBox' | 'authRequired'
 > => ({
     isSourcegraphDotCom: false,
     settingsCascade: {
@@ -40,7 +44,6 @@ const defaultProps = (
     setVersionContext: () => Promise.resolve(undefined),
     availableVersionContexts: [],
     globbing: false,
-    enableSmartQuery: false,
     parsedSearchQuery: 'r:golang/oauth2 test f:travis',
     patternType: SearchPatternType.literal,
     setPatternType: () => undefined,
@@ -48,7 +51,6 @@ const defaultProps = (
     setCaseSensitivity: () => undefined,
     platformContext: {} as any,
     keyboardShortcuts: [],
-    copyQueryButton: false,
     versionContext: undefined,
     showSearchContext: false,
     showSearchContextManagement: false,
@@ -67,6 +69,10 @@ const defaultProps = (
     routes: [],
     fetchAutoDefinedSearchContexts: mockFetchAutoDefinedSearchContexts(),
     fetchSearchContexts: mockFetchSearchContexts,
+    hasUserAddedRepositories: false,
+    hasUserAddedExternalServices: false,
+    getUserSearchContextNamespaces: mockGetUserSearchContextNamespaces,
+    featureFlags: new Map(),
 })
 
 const { add } = storiesOf('web/nav/GlobalNav', module)
@@ -79,7 +85,7 @@ add('Anonymous viewer', () => (
                 authRequired={false}
                 authenticatedUser={null}
                 variant="default"
-                isSearchRelatedPage={false}
+                showSearchBox={false}
             />
         )}
     </WebStory>
@@ -93,7 +99,7 @@ add('Auth required', () => (
                 authRequired={true}
                 authenticatedUser={null}
                 variant="default"
-                isSearchRelatedPage={false}
+                showSearchBox={false}
             />
         )}
     </WebStory>
@@ -111,7 +117,7 @@ add(
                         { username: 'alice', organizations: { nodes: [{ name: 'acme' }] } } as AuthenticatedUser
                     }
                     variant="default"
-                    isSearchRelatedPage={false}
+                    showSearchBox={false}
                 />
             )}
         </WebStory>

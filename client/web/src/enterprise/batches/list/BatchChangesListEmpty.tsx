@@ -5,7 +5,7 @@ export interface BatchChangesListEmptyProps {
 }
 
 export const BatchChangesListEmpty: React.FunctionComponent<BatchChangesListEmptyProps> = () => (
-    <div className="web-content">
+    <div>
         <h2 className="mb-4">Get started with batch changes</h2>
         <h3 className="mb-3">Tutorials to help with your first batch change</h3>
         <div className="row">

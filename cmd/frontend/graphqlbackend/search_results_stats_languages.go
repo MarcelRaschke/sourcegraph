@@ -2,16 +2,19 @@ package graphqlbackend
 
 import (
 	"context"
-	"errors"
-	"os"
+	"io/fs"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/neelance/parallel"
 
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/backend"
-	"github.com/sourcegraph/sourcegraph/cmd/frontend/internal/inventory"
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/goroutine"
+	"github.com/sourcegraph/sourcegraph/internal/inventory"
+	"github.com/sourcegraph/sourcegraph/internal/search/result"
+	"github.com/sourcegraph/sourcegraph/internal/types"
+	"github.com/sourcegraph/sourcegraph/internal/vcs/git"
 )
 
 func (srs *searchResultsStats) Languages(ctx context.Context) ([]*languageStatisticsResolver, error) {
@@ -20,7 +23,7 @@ func (srs *searchResultsStats) Languages(ctx context.Context) ([]*languageStatis
 		return nil, err
 	}
 
-	langs, err := searchResultsStatsLanguages(ctx, srr.SearchResults)
+	langs, err := searchResultsStatsLanguages(ctx, srr.Matches)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +35,24 @@ func (srs *searchResultsStats) Languages(ctx context.Context) ([]*languageStatis
 	return wrapped, nil
 }
 
-func searchResultsStatsLanguages(ctx context.Context, results []SearchResultResolver) ([]inventory.Lang, error) {
+func (srs *searchResultsStats) getResults(ctx context.Context) (*SearchResultsResolver, error) {
+	srs.once.Do(func() {
+		args, err := srs.sr.toTextParameters(srs.sr.Query)
+		if err != nil {
+			srs.srsErr = err
+			return
+		}
+		results, err := srs.sr.doResults(ctx, args)
+		if err != nil {
+			srs.srsErr = err
+			return
+		}
+		srs.srs = srs.sr.resultsToResolver(results)
+	})
+	return srs.srs, srs.srsErr
+}
+
+func searchResultsStatsLanguages(ctx context.Context, matches []result.Match) ([]inventory.Lang, error) {
 	// Batch our operations by repo-commit.
 	type repoCommit struct {
 		repo     api.RepoID
@@ -41,12 +61,12 @@ func searchResultsStatsLanguages(ctx context.Context, results []SearchResultReso
 
 	// Records the work necessary for a batch (repoCommit).
 	type fileStatsWork struct {
-		fullEntries  []os.FileInfo     // matched these full files
+		fullEntries  []fs.FileInfo     // matched these full files
 		partialFiles map[string]uint64 // file with line matches (path) -> count of lines matching
 	}
 
 	var (
-		repos    = map[api.RepoID]*RepositoryResolver{}
+		repos    = map[api.RepoID]types.RepoName{}
 		filesMap = map[repoCommit]*fileStatsWork{}
 
 		run = parallel.NewRun(16)
@@ -56,9 +76,9 @@ func searchResultsStatsLanguages(ctx context.Context, results []SearchResultReso
 	)
 
 	// Track the mapping of repo ID -> repo object as we iterate.
-	sawRepo := func(repo *RepositoryResolver) {
-		if _, ok := repos[repo.IDInt32()]; !ok {
-			repos[repo.IDInt32()] = repo
+	sawRepo := func(repo types.RepoName) {
+		if _, ok := repos[repo.ID]; !ok {
+			repos[repo.ID] = repo
 		}
 	}
 
@@ -66,59 +86,52 @@ func searchResultsStatsLanguages(ctx context.Context, results []SearchResultReso
 	// because we might have a match of a repo *and* a file in the repo. We would need to avoid
 	// double-counting. In this case, we will just count the matching files.
 	hasNonRepoMatches := false
-	for _, res := range results {
-		if _, ok := res.ToRepository(); !ok {
+	for _, match := range matches {
+		if _, ok := match.(*result.RepoMatch); !ok {
 			hasNonRepoMatches = true
 		}
 	}
 
-	for _, res := range results {
-		if fileMatch, ok := res.ToFileMatch(); ok {
-			sawRepo(fileMatch.Repository())
-			key := repoCommit{repo: fileMatch.Repository().IDInt32(), commitID: fileMatch.CommitID}
+	for _, res := range matches {
+		if fileMatch, ok := res.(*result.FileMatch); ok {
+			sawRepo(fileMatch.Repo)
+			key := repoCommit{repo: fileMatch.Repo.ID, commitID: fileMatch.CommitID}
 
 			if _, ok := filesMap[key]; !ok {
 				filesMap[key] = &fileStatsWork{}
 			}
 
-			if len(fileMatch.LineMatches()) > 0 {
+			if len(fileMatch.LineMatches) > 0 {
 				// Only count matching lines. TODO(sqs): bytes are not counted for these files
 				if filesMap[key].partialFiles == nil {
 					filesMap[key].partialFiles = map[string]uint64{}
 				}
-				filesMap[key].partialFiles[fileMatch.path()] += uint64(len(fileMatch.LineMatches()))
+				filesMap[key].partialFiles[fileMatch.Path] += uint64(len(fileMatch.LineMatches))
 			} else {
 				// Count entire file.
 				filesMap[key].fullEntries = append(filesMap[key].fullEntries, &fileInfo{
-					path:  fileMatch.path(),
-					isDir: fileMatch.File().IsDirectory(),
+					path:  fileMatch.Path,
+					isDir: false,
 				})
 			}
-		} else if repo, ok := res.ToRepository(); ok && !hasNonRepoMatches {
-			sawRepo(repo)
+		} else if repoMatch, ok := res.(*result.RepoMatch); ok && !hasNonRepoMatches {
+			sawRepo(repoMatch.RepoName())
 			run.Acquire()
 			goroutine.Go(func() {
 				defer run.Release()
 
-				branchRef, err := repo.DefaultBranch(ctx)
+				repoName := repoMatch.RepoName()
+				refName, err := getDefaultBranchForRepo(ctx, repoName.Name)
 				if err != nil {
 					run.Error(err)
 					return
 				}
-				if branchRef == nil || branchRef.Target() == nil {
-					return
-				}
-				target, err := branchRef.Target().OID(ctx)
+				oid, _, err := git.GetObject(ctx, repoName.Name, refName)
 				if err != nil {
 					run.Error(err)
 					return
 				}
-				repo, err := repo.repo(ctx)
-				if err != nil {
-					run.Error(err)
-					return
-				}
-				inv, err := backend.Repos.GetInventory(ctx, repo, api.CommitID(target), true)
+				inv, err := backend.Repos.GetInventory(ctx, repoName.ToRepo(), api.CommitID(oid.String()), true)
 				if err != nil {
 					run.Error(err)
 					return
@@ -127,7 +140,7 @@ func searchResultsStatsLanguages(ctx context.Context, results []SearchResultReso
 				allInventories = append(allInventories, *inv)
 				allInventoriesMu.Unlock()
 			})
-		} else if _, ok := res.ToCommitSearchResult(); ok {
+		} else if _, ok := res.(*result.CommitMatch); ok {
 			return nil, errors.New("language statistics do not support diff searches")
 		}
 	}
@@ -139,7 +152,7 @@ func searchResultsStatsLanguages(ctx context.Context, results []SearchResultReso
 		goroutine.Go(func() {
 			defer run.Release()
 
-			invCtx, err := backend.InventoryContext(repos[key.repo].RepoName(), key.commitID, true)
+			invCtx, err := backend.InventoryContext(repos[key.repo].Name, key.commitID, true)
 			if err != nil {
 				run.Error(err)
 				return

@@ -2,9 +2,8 @@ package registry
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/graph-gophers/graphql-go/relay"
 
@@ -34,7 +33,7 @@ func extensionRegistryViewerPublishers(ctx context.Context, db dbutil.DB) ([]gra
 	}
 	publishers = append(publishers, &registryPublisher{user: user})
 
-	orgs, err := database.GlobalOrgs.GetByUserID(ctx, user.DatabaseID())
+	orgs, err := database.Orgs(db).GetByUserID(ctx, user.DatabaseID())
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +123,7 @@ func unmarshalRegistryPublisherID(id graphql.ID) (*registryPublisherID, error) {
 	case "Org":
 		p.orgID, err = graphqlbackend.UnmarshalOrgID(id)
 	default:
-		return nil, fmt.Errorf("unknown registry extension publisher type: %q", kind)
+		return nil, errors.Errorf("unknown registry extension publisher type: %q", kind)
 	}
 	if err != nil {
 		return nil, err
@@ -140,10 +139,10 @@ func (p *registryPublisherID) viewerCanAdminister(ctx context.Context, db dbutil
 	switch {
 	case p.userID != 0:
 		// 🚨 SECURITY: Check that the current user is either the publisher or a site admin.
-		return backend.CheckSiteAdminOrSameUser(ctx, p.userID)
+		return backend.CheckSiteAdminOrSameUser(ctx, db, p.userID)
 	case p.orgID != 0:
 		// 🚨 SECURITY: Check that the current user is a member of the publisher org.
-		return backend.CheckOrgAccess(ctx, db, p.orgID)
+		return backend.CheckOrgAccessOrSiteAdmin(ctx, db, p.orgID)
 	default:
 		return errRegistryUnknownPublisher
 	}

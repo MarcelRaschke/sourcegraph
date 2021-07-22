@@ -1,71 +1,111 @@
-import * as H from 'history'
+import ArchiveIcon from 'mdi-react/ArchiveIcon'
+import SourceForkIcon from 'mdi-react/SourceForkIcon'
+import StarIcon from 'mdi-react/StarIcon'
 import React from 'react'
 
 import { Markdown } from '@sourcegraph/shared/src/components/Markdown'
+import { RepoIcon } from '@sourcegraph/shared/src/components/RepoIcon'
 import { ResultContainer } from '@sourcegraph/shared/src/components/ResultContainer'
-import * as GQL from '@sourcegraph/shared/src/graphql/schema'
+import { CommitMatch, getMatchTitle, RepositoryMatch } from '@sourcegraph/shared/src/search/stream'
 import { ThemeProps } from '@sourcegraph/shared/src/theme'
 import { renderMarkdown } from '@sourcegraph/shared/src/util/markdown'
+import { formatRepositoryStarCount } from '@sourcegraph/shared/src/util/stars'
 
-import { SearchResultMatch } from './SearchResultMatch'
+import { CommitSearchResultMatch } from './CommitSearchResultMatch'
 
 interface Props extends ThemeProps {
-    result: Omit<GQL.IGenericSearchResultInterface, '__typename'>
-    history: H.History
+    result: CommitMatch | RepositoryMatch
+    repoName: string
     icon: React.ComponentType<{ className?: string }>
 }
 
-export class SearchResult extends React.Component<Props> {
-    private renderTitle = (): JSX.Element => (
-        <div className="search-result__title">
-            <Markdown
-                className="test-search-result-label"
-                dangerousInnerHTML={
-                    this.props.result.label.html
-                        ? this.props.result.label.html
-                        : renderMarkdown(this.props.result.label.text)
-                }
-                history={this.props.history}
-            />
-            {this.props.result.detail && (
-                <>
-                    <span className="search-result__spacer" />
-                    <Markdown
-                        dangerousInnerHTML={
-                            this.props.result.detail.html
-                                ? this.props.result.detail.html
-                                : renderMarkdown(this.props.result.detail.text)
-                        }
-                        history={this.props.history}
-                    />
-                </>
-            )}
-        </div>
-    )
-
-    private renderBody = (): JSX.Element => (
-        <>
-            {this.props.result.matches.map(match => (
-                <SearchResultMatch
-                    key={match.url}
-                    item={match}
-                    highlightRanges={match.highlights}
-                    isLightTheme={this.props.isLightTheme}
-                    history={this.props.history}
-                />
-            ))}
-        </>
-    )
-
-    public render(): JSX.Element {
+export const SearchResult: React.FunctionComponent<Props> = ({ result, icon, isLightTheme, repoName }) => {
+    const renderTitle = (): JSX.Element => {
+        const formattedRepositoryStarCount = formatRepositoryStarCount(result.repoStars)
         return (
-            <ResultContainer
-                icon={this.props.icon}
-                collapsible={this.props.result && this.props.result.matches.length > 0}
-                defaultExpanded={true}
-                title={this.renderTitle()}
-                expandedChildren={this.renderBody()}
-            />
+            <div className="search-result__title">
+                <RepoIcon repoName={repoName} className="icon-inline text-muted flex-shrink-0" />
+                <Markdown
+                    className="test-search-result-label ml-1 flex-shrink-past-contents text-truncate"
+                    dangerousInnerHTML={renderMarkdown(getMatchTitle(result))}
+                />
+                <span className="search-result__spacer" />
+                {result.type === 'commit' && result.detail && (
+                    <>
+                        <Markdown className="flex-shrink-0" dangerousInnerHTML={renderMarkdown(result.detail)} />
+                    </>
+                )}
+                {result.type === 'commit' && result.detail && formattedRepositoryStarCount && (
+                    <div className="search-result__divider" />
+                )}
+                {formattedRepositoryStarCount && (
+                    <>
+                        <StarIcon className="search-result__star" />
+                        {formattedRepositoryStarCount}
+                    </>
+                )}
+            </div>
         )
     }
+
+    const renderBody = (): JSX.Element => {
+        if (result.type === 'repo') {
+            return (
+                <div>
+                    <div className="search-result-match p-2 flex-column">
+                        <div className="d-flex align-items-center flex-row">
+                            <div className="search-result__match-type">
+                                <small>Repository match</small>
+                            </div>
+                            {result.fork && (
+                                <>
+                                    <div className="search-result__divider" />
+                                    <div>
+                                        <SourceForkIcon className="search-result__icon icon-inline flex-shrink-0 text-muted" />
+                                    </div>
+                                    <div>
+                                        <small>Fork</small>
+                                    </div>
+                                </>
+                            )}
+                            {result.archived && (
+                                <>
+                                    <div className="search-result__divider" />
+                                    <div>
+                                        <ArchiveIcon className="search-result__icon icon-inline flex-shrink-0 text-muted" />
+                                    </div>
+                                    <div>
+                                        <small>Archived</small>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        {result.description && (
+                            <>
+                                <div className="search-result__divider-vertical" />
+                                <div className="search-result__description">
+                                    <small>
+                                        <em>{result.description}</em>
+                                    </small>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )
+        }
+
+        return <CommitSearchResultMatch key={result.url} item={result} isLightTheme={isLightTheme} />
+    }
+
+    return (
+        <ResultContainer
+            icon={icon}
+            // Don't allow collapsing in the redesign
+            collapsible={false}
+            defaultExpanded={true}
+            title={renderTitle()}
+            expandedChildren={renderBody()}
+        />
+    )
 }

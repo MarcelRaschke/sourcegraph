@@ -1160,6 +1160,16 @@ declare module 'sourcegraph' {
          * Register a file decoration provider
          */
         export function registerFileDecorationProvider(provider: FileDecorationProvider): Unsubscribable
+
+        /**
+         * Log a message to the console if logs for the extension are enabled in user settings.
+         *
+         * Messages are automatically prefixed by the extension's ID.
+         *
+         * Note that messages may be transferred via the structured clone algorithm. Ensure that your messages are
+         * [cloneable](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm#things_that_dont_work_with_structured_clone)
+         */
+        export function log(message?: any, ...optionalParams: any[]): void
     }
 
     /**
@@ -1243,7 +1253,7 @@ declare module 'sourcegraph' {
          * A search context is a set of repositories and revisions on a Sourcegraph instance.
          * When set, extensions use it to scope search queries, code intelligence actions, etc.
          *
-         * See more information at https://docs.sourcegraph.com/code_search/explanations/features#search-contexts-experimental.
+         * See more information at https://docs.sourcegraph.com/code_search/explanations/features#search-contexts.
          */
         export const searchContext: string | undefined
 
@@ -1809,47 +1819,7 @@ declare module 'sourcegraph' {
         }
         export interface ErrorGraphQLResult {
             data: undefined
-            errors: GraphQLError[]
-        }
-
-        /**
-         * A spec-compliant member of the GraphQL `errors` array.
-         */
-        export interface GraphQLError {
-            /**
-             * Every error must contain an entry with the key message with a string description of the error intended for
-             * the developer as a guide to understand and correct the error.
-             */
-            message: string
-
-            /**
-             * If an error can be associated to a particular point in the requested GraphQL document, it should contain an
-             * entry with the key locations with a list of locations, where each location is a map with the keys line and
-             * column, both positive numbers starting from 1 which describe the beginning of an associated syntax element.
-             */
-            locations?: {
-                line: number
-                column: number
-            }[]
-
-            /**
-             * If an error can be associated to a particular field in the GraphQL result, it must contain an entry with the
-             * key path that details the path of the response field which experienced the error. This allows clients to
-             * identify whether a null result is intentional or caused by a runtime error.
-             *
-             * This field should be a list of path segments starting at the root of the response and ending with the field
-             * associated with the error. Path segments that represent fields should be strings, and path segments that
-             * represent list indices should be 0‐indexed integers. If the error happens in an aliased field, the path to
-             * the error should use the aliased name, since it represents a path in the response, not in the query.
-             */
-            path?: (string | number)[]
-
-            /**
-             * GraphQL services may provide an additional entry to errors with key extensions. This entry, if set, must
-             * have a map as its value. This entry is reserved for implementors to add additional information to errors
-             * however they see fit, and there are no additional restrictions on its contents.
-             */
-            extensions?: Record<string, unknown>
+            errors: readonly import('graphql').GraphQLError[]
         }
     }
 

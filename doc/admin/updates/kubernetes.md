@@ -7,35 +7,61 @@ A new version of Sourcegraph is released every month on the **20th** (with patch
 needed). Check the [Sourcegraph blog](https://about.sourcegraph.com/blog) or the site admin updates page to learn about
 updates. We actively maintain the two most recent monthly releases of Sourcegraph.
 
-Upgrades **must** happen across consecutive minor versions of Sourcegraph. For example, if you are running Sourcegraph
-3.1 and want to upgrade to 3.3, you **must** upgrade to 3.2 and then 3.3.
+> ⚠️ **Regardless of your deployment type:** ⚠️
+> <br>Upgrade one version at a time, e.g. v3.26 --> v3.27 --> v3.28.
+> <br>Patches, e.g. vX.X.4 vs. vX.X.5, do not have to be adopted when moving between vX.X versions.
+
+> ⚠️ **Regardless of your deployment type:** ⚠️
+> <br>Check your <a href="../migrations">out of band migration status</a> prior to upgrade to avoid a necessary rollback while the migration finishes.
 
 **Always refer to this page before upgrading Sourcegraph,** as it comprehensively describes the steps needed to upgrade,
 and any manual migration steps you must perform.
 
 <!-- GENERATE UPGRADE GUIDE ON RELEASE (release tooling uses this to add entries) -->
 
-## 3.26 -> 3.27
+## 3.29 -> 3.30
 
-TODO
+No manual migration required, follow the [standard upgrade method](../install/kubernetes/update.md) to upgrade your
+deployment.
 
-*How smooth was this upgrade process for you? You can give us your feedback on this upgrade by filling out [this feedback form](https://share.hsforms.com/1aGeG7ALQQEGO6zyfauIiCA1n7ku?update_version=3.26).*
+*How smooth was this upgrade process for you? You can give us your feedback on this upgrade by filling out [this feedback form](https://share.hsforms.com/1aGeG7ALQQEGO6zyfauIiCA1n7ku?update_version=3.29).*
+
+## 3.28 -> 3.29
+
+This upgrade adds a new `worker` service that runs a number of background jobs that were previously run in the `frontend` service. See [notes on deploying workers](../workers.md#deploying-workers) for additional details. Good initial values for CPU and memory resources allocated to this new service should match the `frontend` service.
+
+*How smooth was this upgrade process for you? You can give us your feedback on this upgrade by filling out [this feedback form](https://share.hsforms.com/1aGeG7ALQQEGO6zyfauIiCA1n7ku?update_version=3.28).*
+
+## 3.27 -> 3.28
+
+- All Sourcegraph images now have a registry prefix. [#2901](https://github.com/sourcegraph/deploy-sourcegraph/pull/2901)
+- The memory requirements for `redis-cache` and `redis-store` have been increased by 1GB. See https://github.com/sourcegraph/deploy-sourcegraph/pull/2898 for more context.
+
+*How smooth was this upgrade process for you? You can give us your feedback on this upgrade by filling out [this feedback form](https://share.hsforms.com/1aGeG7ALQQEGO6zyfauIiCA1n7ku?update_version=3.27).*
 
 ## 3.26 -> 3.27
 
 > Warning: ⚠️ Sourcegraph 3.27 now requires **Postgres 12+**.
 
-If you are using an external database, [upgrade your database](https://docs.sourcegraph.com/admin/postgres#upgrading-external-postgresql-instances) to Postgres 12 or above prior to upgrading Sourcegraph. No action is required if you are using the supplied supplied database images.
+If you are using an external
+database, [upgrade your database](https://docs.sourcegraph.com/admin/postgres#upgrading-external-postgresql-instances)
+to Postgres 12 or above prior to upgrading Sourcegraph. No action is required if you are using the supplied database
+images.
+> **Note**: The Postgres 12 database migration scales with the size of your database, and the resources provided to the container.
+> Expect to have downtime relative to the size of your database. Additionally, you must ensure that have enough storage
+> space to accommodate the migration. A rough guide would be 2x the current on-disk database size
 
 > Warning: ⚠️ We have updated the default replicas for `sourcegraph-frontend` and `precise-code-intel-worker` to `2`. If you use a custom value, make sure you do not merge the replica change.
 
 Afterwards, follow the [standard upgrade method](../install/kubernetes/update.md) to upgrade your deployment.
 
-*How smooth was this upgrade process for you? You can give us your feedback on this upgrade by filling out [this feedback form](https://share.hsforms.com/1aGeG7ALQQEGO6zyfauIiCA1n7ku?update_version=3.26).*
+*How smooth was this upgrade process for you? You can give us your feedback on this upgrade by filling
+out [this feedback form](https://share.hsforms.com/1aGeG7ALQQEGO6zyfauIiCA1n7ku?update_version=3.26).*
 
 ## 3.25 -> 3.26
 
-No manual migration required, follow the [standard upgrade method](../install/kubernetes/update.md) to upgrade your deployment.
+No manual migration required, follow the [standard upgrade method](../install/kubernetes/update.md) to upgrade your
+deployment.
 
 > NOTE: ⚠️ From **3.27** onwards we will only support PostgreSQL versions **starting from 12**.
 

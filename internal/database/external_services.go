@@ -8,12 +8,13 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/hashicorp/go-multierror"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/keegancsmith/sqlf"
 	"github.com/lib/pq"
-	"github.com/pkg/errors"
 	"github.com/tidwall/gjson"
 	"github.com/xeipuuv/gojsonschema"
 
@@ -52,8 +53,19 @@ type ExternalServiceStore struct {
 	mu sync.Mutex
 }
 
+func (e *ExternalServiceStore) copy() *ExternalServiceStore {
+	return &ExternalServiceStore{
+		Store:                     e.Store,
+		key:                       e.key,
+		GitHubValidators:          e.GitHubValidators,
+		GitLabValidators:          e.GitLabValidators,
+		BitbucketServerValidators: e.BitbucketServerValidators,
+		PerforceValidators:        e.PerforceValidators,
+	}
+}
+
 // ExternalServices instantiates and returns a new ExternalServicesStore with prepared statements.
-func ExternalServices(db dbutil.DB) *ExternalServiceStore {
+var ExternalServices = func(db dbutil.DB) *ExternalServiceStore {
 	return &ExternalServiceStore{Store: basestore.NewWithDB(db, sql.TxOptions{})}
 }
 
@@ -63,16 +75,32 @@ func ExternalServicesWith(other basestore.ShareableStore) *ExternalServiceStore 
 }
 
 func (e *ExternalServiceStore) With(other basestore.ShareableStore) *ExternalServiceStore {
-	return &ExternalServiceStore{Store: e.Store.With(other), key: e.key}
+	s := e.copy()
+	s.Store = e.Store.With(other)
+	return s
 }
 
 func (e *ExternalServiceStore) WithEncryptionKey(key encryption.Key) *ExternalServiceStore {
-	return &ExternalServiceStore{Store: e.Store, key: key}
+	s := e.copy()
+	s.key = key
+	return s
 }
 
 func (e *ExternalServiceStore) Transact(ctx context.Context) (*ExternalServiceStore, error) {
+	if Mocks.ExternalServices.Transact != nil {
+		return Mocks.ExternalServices.Transact(ctx)
+	}
 	txBase, err := e.Store.Transact(ctx)
-	return &ExternalServiceStore{Store: txBase, key: e.key}, err
+	s := e.copy()
+	s.Store = txBase
+	return s, err
+}
+
+func (e *ExternalServiceStore) Done(err error) error {
+	if Mocks.ExternalServices.Done != nil {
+		return Mocks.ExternalServices.Done(err)
+	}
+	return e.Store.Done(err)
 }
 
 // ensureStore instantiates a basestore.Store if necessary, using the dbconn.Global handle.
@@ -96,6 +124,7 @@ var ExternalServiceKinds = map[string]ExternalServiceKind{
 	extsvc.KindGitHub:          {CodeHost: true, JSONSchema: schema.GitHubSchemaJSON},
 	extsvc.KindGitLab:          {CodeHost: true, JSONSchema: schema.GitLabSchemaJSON},
 	extsvc.KindGitolite:        {CodeHost: true, JSONSchema: schema.GitoliteSchemaJSON},
+	extsvc.KindJVMPackages:     {CodeHost: true, JSONSchema: schema.JVMPackagesSchemaJSON},
 	extsvc.KindPerforce:        {CodeHost: true, JSONSchema: schema.PerforceSchemaJSON},
 	extsvc.KindPhabricator:     {CodeHost: true, JSONSchema: schema.PhabricatorSchemaJSON},
 	extsvc.KindOther:           {CodeHost: true, JSONSchema: schema.OtherExternalServiceSchemaJSON},
@@ -181,7 +210,7 @@ type ValidateExternalServiceConfigOptions struct {
 func (e *ExternalServiceStore) ValidateConfig(ctx context.Context, opt ValidateExternalServiceConfigOptions) (normalized []byte, err error) {
 	ext, ok := ExternalServiceKinds[opt.Kind]
 	if !ok {
-		return nil, fmt.Errorf("invalid external service kind: %s", opt.Kind)
+		return nil, errors.Errorf("invalid external service kind: %s", opt.Kind)
 	}
 
 	// All configs must be valid JSON.
@@ -316,14 +345,14 @@ func validateOtherExternalServiceConnection(c *schema.OtherExternalServiceConnec
 	for i, repo := range c.Repos {
 		cloneURL, err := parseRepo(repo)
 		if err != nil {
-			return fmt.Errorf(`repos.%d: %s`, i, err)
+			return errors.Errorf(`repos.%d: %s`, i, err)
 		}
 
 		switch cloneURL.Scheme {
 		case "git", "http", "https", "ssh":
 			continue
 		default:
-			return fmt.Errorf("repos.%d: scheme %q not one of git, http, https or ssh", i, cloneURL.Scheme)
+			return errors.Errorf("repos.%d: scheme %q not one of git, http, https or ssh", i, cloneURL.Scheme)
 		}
 	}
 
@@ -427,7 +456,7 @@ func (e *ExternalServiceStore) validateDuplicateRateLimits(ctx context.Context, 
 				return errors.Wrap(err, "extracting rate limit config")
 			}
 			if rlc.BaseURL == baseURL && svc.ID != id && !rlc.IsDefault {
-				return fmt.Errorf("existing external service, %q, already has a rate limit set", rlc.DisplayName)
+				return errors.Errorf("existing external service, %q, already has a rate limit set", rlc.DisplayName)
 			}
 		}
 
@@ -460,7 +489,7 @@ func (e *ExternalServiceStore) validateSingleKindPerUser(ctx context.Context, id
 		// Fail if a service already exists that is not the current service
 		for _, svc := range svcs {
 			if svc.ID != id {
-				return fmt.Errorf("existing external service, %q, of same kind already added", svc.DisplayName)
+				return errors.Errorf("existing external service, %q, of same kind already added", svc.DisplayName)
 			}
 		}
 		if len(svcs) < opt.Limit {
@@ -470,20 +499,43 @@ func (e *ExternalServiceStore) validateSingleKindPerUser(ctx context.Context, id
 	return nil
 }
 
+// upsertAuthorizationToExternalService adds "authorization" field to the
+// external service config when not yet present for GitHub and GitLab.
+func upsertAuthorizationToExternalService(kind, config string) (string, error) {
+	switch kind {
+	case extsvc.KindGitHub:
+		return jsonc.Edit(config, &schema.GitHubAuthorization{}, "authorization")
+
+	case extsvc.KindGitLab:
+		return jsonc.Edit(config,
+			&schema.GitLabAuthorization{
+				IdentityProvider: schema.IdentityProvider{
+					Oauth: &schema.OAuthIdentity{
+						Type: "oauth",
+					},
+				},
+			},
+			"authorization")
+	}
+	return config, nil
+}
+
 // Create creates an external service.
 //
-// Since this method is used before the configuration server has started
-// (search for "EXTSVC_CONFIG_FILE") you must pass the conf.Get function in so
-// that an alternative can be used when the configuration server has not
-// started, otherwise a panic would occur once pkg/conf's deadlock detector
-// determines a deadlock occurred.
+// Since this method is used before the configuration server has started (search
+// for "EXTSVC_CONFIG_FILE") you must pass the conf.Get function in so that an
+// alternative can be used when the configuration server has not started,
+// otherwise a panic would occur once pkg/conf's deadlock detector determines a
+// deadlock occurred.
 //
-// 🚨 SECURITY: The caller must ensure that the actor is a site admin or owner of the external service.
-// Otherwise, `es.NamespaceUserID` must be specified (i.e. non-nil) for
-// a user-added external service.
+// 🚨 SECURITY: The caller must ensure that the actor is a site admin or owner
+// of the external service. Otherwise, `es.NamespaceUserID` must be specified
+// (i.e. non-nil) for a user-added external service.
 //
-// 🚨 SECURITY: The value of `es.Unrestricted` is disregarded and will always
-// be recalculated based on whether `"authorization"` is presented in `es.Config`.
+// 🚨 SECURITY: The value of `es.Unrestricted` is disregarded and will always be
+// recalculated based on whether "authorization" field is presented in
+// `es.Config`. For Sourcegraph Cloud, the `es.Unrestricted` will always be
+// false (i.e. enforce permissions).
 func (e *ExternalServiceStore) Create(ctx context.Context, confGet func() *conf.Unified, es *types.ExternalService) error {
 	if Mocks.ExternalServices.Create != nil {
 		return Mocks.ExternalServices.Create(ctx, confGet, es)
@@ -500,51 +552,14 @@ func (e *ExternalServiceStore) Create(ctx context.Context, confGet func() *conf.
 		return err
 	}
 
-	// NOTE: For GitHub and GitLab user code host connections on Sourcegraph Cloud,
-	// we always want to enforce repository permissions using OAuth to prevent
-	// unexpected resource leaking.
-	if envvar.SourcegraphDotComMode() && es.NamespaceUserID != 0 {
-		switch es.Kind {
-		case extsvc.KindGitHub:
-			var c schema.GitHubConnection
-			if err = jsoniter.Unmarshal(normalized, &c); err != nil {
-				return err
-			}
-
-			if c.Authorization == nil {
-				c.Authorization = &schema.GitHubAuthorization{}
-
-				normalized, err = jsoniter.Marshal(c)
-				if err != nil {
-					return err
-				}
-			}
-
-		case extsvc.KindGitLab:
-			var c schema.GitLabConnection
-			if err = jsoniter.Unmarshal(normalized, &c); err != nil {
-				return err
-			}
-
-			if c.Authorization == nil {
-				c.Authorization = &schema.GitLabAuthorization{
-					IdentityProvider: schema.IdentityProvider{
-						Oauth: &schema.OAuthIdentity{
-							Type: "oauth",
-						},
-					},
-				}
-
-				normalized, err = jsoniter.Marshal(c)
-				if err != nil {
-					return err
-				}
-			}
+	// 🚨 SECURITY: For all GitHub and GitLab code host connections on Sourcegraph
+	// Cloud, we always want to enforce repository permissions using OAuth to
+	// prevent unexpected resource leaking.
+	if envvar.SourcegraphDotComMode() {
+		es.Config, err = upsertAuthorizationToExternalService(es.Kind, es.Config)
+		if err != nil {
+			return err
 		}
-
-		// We expect users to edit code host connections via our UI so no JSON with
-		// comments should appear, thus OK to set config as normalized.
-		es.Config = string(normalized)
 	}
 
 	es.CreatedAt = timeutil.Now()
@@ -556,7 +571,7 @@ func (e *ExternalServiceStore) Create(ctx context.Context, confGet func() *conf.
 			return err
 		}
 	}
-	es.Unrestricted = !gjson.GetBytes(normalized, "authorization").Exists()
+	es.Unrestricted = !envvar.SourcegraphDotComMode() && !gjson.GetBytes(normalized, "authorization").Exists()
 
 	config, keyID, err := e.maybeEncryptConfig(ctx, es.Config)
 	if err != nil {
@@ -600,12 +615,12 @@ func (e *ExternalServiceStore) maybeDecryptConfig(ctx context.Context, config st
 		// config is not encrypted, return plaintext
 		return config, nil
 	}
-	var key = keyring.Default().ExternalServiceKey
+	key := keyring.Default().ExternalServiceKey
 	if e.key != nil {
 		key = e.key
 	}
 	if key == nil {
-		return config, fmt.Errorf("couldn't decrypt encrypted config, key is nil")
+		return config, errors.Errorf("couldn't decrypt encrypted config, key is nil")
 	}
 	decrypted, err := key.Decrypt(ctx, []byte(config))
 	if err != nil {
@@ -619,8 +634,10 @@ func (e *ExternalServiceStore) maybeDecryptConfig(ctx context.Context, config st
 // NOTE: Deletion of an external service via Upsert is not allowed. Use Delete()
 // instead.
 //
-// 🚨 SECURITY: The value of `Unrestricted` field is disregarded and will always
-// be recalculated based on whether `"authorization"` is presented in `Config`.
+// 🚨 SECURITY: The value of `es.Unrestricted` is disregarded and will always be
+// recalculated based on whether "authorization" field is presented in
+// `es.Config`. For Sourcegraph Cloud, the `es.Unrestricted` will always be
+// false (i.e. enforce permissions).
 func (e *ExternalServiceStore) Upsert(ctx context.Context, svcs ...*types.ExternalService) (err error) {
 	if Mocks.ExternalServices.Upsert != nil {
 		return Mocks.ExternalServices.Upsert(ctx, svcs...)
@@ -631,7 +648,7 @@ func (e *ExternalServiceStore) Upsert(ctx context.Context, svcs ...*types.Extern
 	e.ensureStore()
 
 	for _, s := range svcs {
-		s.Unrestricted = !gjson.Get(s.Config, "authorization").Exists()
+		s.Unrestricted = !envvar.SourcegraphDotComMode() && !gjson.Get(s.Config, "authorization").Exists()
 	}
 
 	tx, err := e.Transact(ctx)
@@ -825,6 +842,18 @@ func (e *ExternalServiceStore) Update(ctx context.Context, ps []schema.AuthProvi
 		if err != nil {
 			return err
 		}
+
+		// 🚨 SECURITY: For all GitHub and GitLab code host connections on Sourcegraph
+		// Cloud, we always want to enforce repository permissions using OAuth to
+		// prevent unexpected resource leaking.
+		if envvar.SourcegraphDotComMode() {
+			config, err := upsertAuthorizationToExternalService(externalService.Kind, *update.Config)
+			if err != nil {
+				return err
+			}
+			update.Config = &config
+		}
+
 		var config string
 		config, keyID, err = e.maybeEncryptConfig(ctx, *update.Config)
 		if err != nil {
@@ -861,7 +890,7 @@ func (e *ExternalServiceStore) Update(ctx context.Context, ps []schema.AuthProvi
 	}
 
 	if update.Config != nil {
-		unrestricted := !gjson.GetBytes(normalized, "authorization").Exists()
+		unrestricted := !envvar.SourcegraphDotComMode() && !gjson.GetBytes(normalized, "authorization").Exists()
 		q := sqlf.Sprintf(`config = %s, encryption_key_id = %s, next_sync_at = NOW(), unrestricted = %s`, update.Config, keyID, unrestricted)
 		if err := execUpdate(ctx, tx.DB(), q); err != nil {
 			return err
@@ -993,6 +1022,7 @@ func (e *ExternalServiceStore) GetByID(ctx context.Context, id int64) (*types.Ex
 	return ess[0], nil
 }
 
+// GetSyncJobs gets all sync jobs
 func (e *ExternalServiceStore) GetSyncJobs(ctx context.Context) ([]*types.ExternalServiceSyncJob, error) {
 	q := sqlf.Sprintf(`SELECT id, state, failure_message, started_at, finished_at, process_after, num_resets, external_service_id, num_failures
 FROM external_service_sync_jobs ORDER BY started_at desc
@@ -1230,6 +1260,44 @@ func (e *ExternalServiceStore) RepoCount(ctx context.Context, id int64) (int32, 
 	return count, nil
 }
 
+// SyncDue returns true if any of the supplied external services are due to sync
+// now or within given duration from now.
+func (e *ExternalServiceStore) SyncDue(ctx context.Context, intIDs []int64, d time.Duration) (bool, error) {
+	if len(intIDs) == 0 {
+		return false, nil
+	}
+	ids := make([]*sqlf.Query, 0, len(intIDs))
+	for _, id := range intIDs {
+		ids = append(ids, sqlf.Sprintf("%s", id))
+	}
+	idFilter := sqlf.Sprintf("IN (%s)", sqlf.Join(ids, ","))
+	deadline := time.Now().Add(d)
+
+	q := sqlf.Sprintf(`
+SELECT TRUE
+WHERE EXISTS(
+        SELECT
+        FROM external_services
+        WHERE id %s
+          AND (
+                next_sync_at IS NULL
+                OR next_sync_at <= %s)
+    )
+   OR EXISTS(
+        SELECT
+        FROM external_service_sync_jobs
+        WHERE external_service_id %s
+          AND state IN ('queued', 'processing')
+    );
+`, idFilter, deadline, idFilter)
+
+	v, exists, err := basestore.ScanFirstBool(e.Query(ctx, q))
+	if err != nil {
+		return false, err
+	}
+	return v && exists, nil
+}
+
 // MockExternalServices mocks the external services store.
 type MockExternalServices struct {
 	Create           func(ctx context.Context, confGet func() *conf.Unified, externalService *types.ExternalService) error
@@ -1241,4 +1309,6 @@ type MockExternalServices struct {
 	Update           func(ctx context.Context, ps []schema.AuthProviders, id int64, update *ExternalServiceUpdate) error
 	Count            func(ctx context.Context, opt ExternalServicesListOptions) (int, error)
 	Upsert           func(ctx context.Context, services ...*types.ExternalService) error
+	Transact         func(ctx context.Context) (*ExternalServiceStore, error)
+	Done             func(error) error
 }

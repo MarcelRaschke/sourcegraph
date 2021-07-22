@@ -20,7 +20,7 @@ func (r *schemaResolver) CreateUser(ctx context.Context, args *struct {
 	Email    *string
 }) (*createUserResult, error) {
 	// 🚨 SECURITY: Only site admins can create user accounts.
-	if err := backend.CheckCurrentUserIsSiteAdmin(ctx); err != nil {
+	if err := backend.CheckCurrentUserIsSiteAdmin(ctx, r.db); err != nil {
 		return nil, err
 	}
 
@@ -30,7 +30,7 @@ func (r *schemaResolver) CreateUser(ctx context.Context, args *struct {
 	}
 
 	// The new user will be created with a verified email address.
-	user, err := database.GlobalUsers.Create(ctx, database.NewUser{
+	user, err := database.Users(r.db).Create(ctx, database.NewUser{
 		Username:        args.Username,
 		Email:           email,
 		EmailIsVerified: true,
@@ -68,7 +68,7 @@ func (r *createUserResult) ResetPasswordURL(ctx context.Context) (*string, error
 
 	var ru string
 	if conf.CanSendEmail() {
-		ru, err := userpasswd.HandleSetPasswordEmail(ctx, r.user.ID)
+		ru, err := userpasswd.HandleSetPasswordEmail(ctx, r.db, r.user.ID)
 		if err == nil {
 			return &ru, nil
 		}

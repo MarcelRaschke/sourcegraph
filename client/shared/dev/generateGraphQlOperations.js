@@ -11,7 +11,11 @@ const BROWSER_FOLDER = path.resolve(ROOT_FOLDER, './client/browser')
 const SHARED_FOLDER = path.resolve(ROOT_FOLDER, './client/shared')
 const SCHEMA_PATH = path.join(ROOT_FOLDER, './cmd/frontend/graphqlbackend/*.graphql')
 
-const SHARED_DOCUMENTS_GLOB = [`${SHARED_FOLDER}/src/**/*.{ts,tsx}`, `!${SHARED_FOLDER}/src/testing/**/*.*`]
+const SHARED_DOCUMENTS_GLOB = [
+  `${SHARED_FOLDER}/src/**/*.{ts,tsx}`,
+  `!${SHARED_FOLDER}/src/testing/**/*.*`,
+  `!${SHARED_FOLDER}/src/graphql/schema.ts`,
+]
 
 const WEB_DOCUMENTS_GLOB = [
   `${WEB_FOLDER}/src/**/*.{ts,tsx}`,
@@ -28,7 +32,11 @@ const BROWSER_DOCUMENTS_GLOB = [
 // Define ALL_DOCUMENTS_GLOB as the union of the previous glob arrays.
 const ALL_DOCUMENTS_GLOB = [...new Set([...SHARED_DOCUMENTS_GLOB, ...WEB_DOCUMENTS_GLOB, ...BROWSER_DOCUMENTS_GLOB])]
 
-const plugins = [`${SHARED_FOLDER}/dev/extractGraphQlOperationCodegenPlugin.js`, 'typescript', 'typescript-operations']
+const SHARED_PLUGINS = [
+  `${SHARED_FOLDER}/dev/extractGraphQlOperationCodegenPlugin.js`,
+  'typescript',
+  'typescript-operations',
+]
 
 /**
  * Generates TypeScript files with types for all GraphQL operations.
@@ -76,7 +84,7 @@ async function generateGraphQlOperations() {
             enumValues: '@sourcegraph/shared/src/graphql-operations',
             interfaceNameForOperations: 'BrowserGraphQlOperations',
           },
-          plugins,
+          plugins: SHARED_PLUGINS,
         },
 
         [path.join(WEB_FOLDER, './src/graphql-operations.ts')]: {
@@ -87,7 +95,7 @@ async function generateGraphQlOperations() {
             enumValues: '@sourcegraph/shared/src/graphql-operations',
             interfaceNameForOperations: 'WebGraphQlOperations',
           },
-          plugins,
+          plugins: SHARED_PLUGINS,
         },
 
         [path.join(SHARED_FOLDER, './src/graphql-operations.ts')]: {
@@ -97,7 +105,7 @@ async function generateGraphQlOperations() {
             noExport: false,
             interfaceNameForOperations: 'SharedGraphQlOperations',
           },
-          plugins,
+          plugins: [...SHARED_PLUGINS, 'typescript-apollo-client-helpers'],
         },
       },
     },

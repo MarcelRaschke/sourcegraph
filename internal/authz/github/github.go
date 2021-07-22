@@ -2,12 +2,11 @@ package github
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 
 	"github.com/sourcegraph/sourcegraph/internal/authz"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc"
@@ -60,36 +59,17 @@ func (p *Provider) Validate() (problems []string) {
 	return nil
 }
 
-// FetchUserPerms returns a list of repository IDs (on code host) that the given account
-// has read access on the code host. The repository ID has the same value as it would be
-// used as api.ExternalRepoSpec.ID. The returned list only includes private repository IDs.
-//
-// This method may return partial but valid results in case of error, and it is up to
-// callers to decide whether to discard.
-//
-// API docs: https://developer.github.com/v3/repos/#list-repositories-for-the-authenticated-user
-func (p *Provider) FetchUserPerms(ctx context.Context, account *extsvc.Account) (*authz.ExternalUserPermissions, error) {
-	if account == nil {
-		return nil, errors.New("no account provided")
-	} else if !extsvc.IsHostOfAccount(p.codeHost, account) {
-		return nil, fmt.Errorf("not a code host of the account: want %q but have %q",
-			account.AccountSpec.ServiceID, p.codeHost.ServiceID)
-	}
-
-	_, tok, err := github.GetExternalAccountData(&account.AccountData)
-	if err != nil {
-		return nil, errors.Wrap(err, "get external account data")
-	} else if tok == nil {
-		return nil, errors.New("no token found in the external account data")
-	}
-
+// FetchUserPermsByToken fetches all the private repo ids that the token can
+// access.
+func (p *Provider) FetchUserPermsByToken(ctx context.Context, token string) (*authz.ExternalUserPermissions, error) {
 	// 🚨 SECURITY: Use user token is required to only list repositories the user has access to.
-	client := p.client.WithToken(tok.AccessToken)
+	client := p.client.WithToken(token)
 
 	// 100 matches the maximum page size, thus a good default to avoid multiple allocations
 	// when appending the first 100 results to the slice.
 	repoIDs := make([]extsvc.RepoID, 0, 100)
 	hasNextPage := true
+	var err error
 	for page := 1; hasNextPage; page++ {
 		var repos []*github.Repository
 		repos, hasNextPage, _, err = client.ListAffiliatedRepositories(ctx, github.VisibilityPrivate, page)
@@ -109,6 +89,32 @@ func (p *Provider) FetchUserPerms(ctx context.Context, account *extsvc.Account) 
 	}, nil
 }
 
+// FetchUserPerms returns a list of repository IDs (on code host) that the given account
+// has read access on the code host. The repository ID has the same value as it would be
+// used as api.ExternalRepoSpec.ID. The returned list only includes private repository IDs.
+//
+// This method may return partial but valid results in case of error, and it is up to
+// callers to decide whether to discard.
+//
+// API docs: https://developer.github.com/v3/repos/#list-repositories-for-the-authenticated-user
+func (p *Provider) FetchUserPerms(ctx context.Context, account *extsvc.Account) (*authz.ExternalUserPermissions, error) {
+	if account == nil {
+		return nil, errors.New("no account provided")
+	} else if !extsvc.IsHostOfAccount(p.codeHost, account) {
+		return nil, errors.Errorf("not a code host of the account: want %q but have %q",
+			account.AccountSpec.ServiceID, p.codeHost.ServiceID)
+	}
+
+	_, tok, err := github.GetExternalAccountData(&account.AccountData)
+	if err != nil {
+		return nil, errors.Wrap(err, "get external account data")
+	} else if tok == nil {
+		return nil, errors.New("no token found in the external account data")
+	}
+
+	return p.FetchUserPermsByToken(ctx, tok.AccessToken)
+}
+
 // FetchRepoPerms returns a list of user IDs (on code host) who have read access to
 // the given project on the code host. The user ID has the same value as it would
 // be used as extsvc.Account.AccountID. The returned list includes both direct access
@@ -122,7 +128,7 @@ func (p *Provider) FetchRepoPerms(ctx context.Context, repo *extsvc.Repository) 
 	if repo == nil {
 		return nil, errors.New("no repository provided")
 	} else if !extsvc.IsHostOfRepo(p.codeHost, &repo.ExternalRepoSpec) {
-		return nil, fmt.Errorf("not a code host of the repository: want %q but have %q",
+		return nil, errors.Errorf("not a code host of the repository: want %q but have %q",
 			repo.ServiceID, p.codeHost.ServiceID)
 	}
 

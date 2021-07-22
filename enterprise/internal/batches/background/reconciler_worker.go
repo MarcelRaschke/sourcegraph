@@ -36,10 +36,11 @@ func newReconcilerWorker(
 	r := reconciler.New(gitClient, sourcer, s)
 
 	options := workerutil.WorkerOptions{
-		Name:        "batches_reconciler_worker",
-		NumHandlers: 5,
-		Interval:    5 * time.Second,
-		Metrics:     metrics.reconcilerWorkerMetrics,
+		Name:              "batches_reconciler_worker",
+		NumHandlers:       5,
+		Interval:          5 * time.Second,
+		HeartbeatInterval: 15 * time.Second,
+		Metrics:           metrics.reconcilerWorkerMetrics,
 	}
 
 	workerStore := createReconcilerDBWorkerStore(s)

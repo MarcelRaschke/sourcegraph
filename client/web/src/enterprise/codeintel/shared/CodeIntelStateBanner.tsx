@@ -4,7 +4,6 @@ import React, { FunctionComponent } from 'react'
 import { LSIFIndexState, LSIFUploadState } from '../../../graphql-operations'
 
 import { CodeIntelStateDescription } from './CodeIntelStateDescription'
-import { CodeIntelStateIcon } from './CodeIntelStateIcon'
 
 export interface CodeIntelStateBannerProps {
     typeName: string
@@ -24,10 +23,7 @@ export const CodeIntelStateBanner: FunctionComponent<CodeIntelStateBannerProps> 
     className = 'alert-primary',
 }) => (
     <div className={classNames('alert', className)}>
-        <span className="icon-inline">
-            <CodeIntelStateIcon state={state} />
-        </span>
-        <span className="ml-2">
+        <span>
             <CodeIntelStateDescription
                 state={state}
                 placeInQueue={placeInQueue}

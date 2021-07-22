@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -16,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/inconshreveable/log15"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -24,12 +24,17 @@ import (
 
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend"
 	searchlogs "github.com/sourcegraph/sourcegraph/cmd/frontend/internal/search/logs"
+	"github.com/sourcegraph/sourcegraph/internal/api"
+	"github.com/sourcegraph/sourcegraph/internal/database"
 	"github.com/sourcegraph/sourcegraph/internal/database/dbutil"
 	"github.com/sourcegraph/sourcegraph/internal/honey"
 	"github.com/sourcegraph/sourcegraph/internal/lazyregexp"
 	"github.com/sourcegraph/sourcegraph/internal/search/result"
+	"github.com/sourcegraph/sourcegraph/internal/search/run"
+	"github.com/sourcegraph/sourcegraph/internal/search/streaming"
 	streamhttp "github.com/sourcegraph/sourcegraph/internal/search/streaming/http"
 	"github.com/sourcegraph/sourcegraph/internal/trace"
+	"github.com/sourcegraph/sourcegraph/internal/types"
 )
 
 // StreamHandler is an http handler which streams back search results.
@@ -83,6 +88,7 @@ func (h *streamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	eventWriter.StatHook = eventStreamOTHook(tr.LogFields)
 
 	events, inputs, results := h.startSearch(ctx, args)
+	events = batchEvents(events, 50*time.Millisecond)
 
 	traceURL := ""
 	if span := opentracing.SpanFromContext(ctx); span != nil {
@@ -120,7 +126,7 @@ func (h *streamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = eventWriter.Event("progress", progress.Current())
 	}
 
-	filters := &graphqlbackend.SearchFilters{
+	filters := &streaming.SearchFilters{
 		Globbing: false, // TODO
 	}
 
@@ -158,7 +164,7 @@ func (h *streamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	first := true
 
 	for {
-		var event graphqlbackend.SearchEvent
+		var event streaming.SearchEvent
 		var ok bool
 		select {
 		case event, ok = <-events:
@@ -177,45 +183,19 @@ func (h *streamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		progress.Update(event)
 		filters.Update(event)
 
-		for _, result := range event.Results {
+		// Truncate the event to the match limit before fetching repo metadata
+		for i, match := range event.Results {
 			if display <= 0 {
+				event.Results = event.Results[:i]
 				break
 			}
 
-			if fm, ok := result.ToFileMatch(); ok {
-				display = fm.Limit(display)
+			display = match.Limit(display)
+		}
 
-				if syms := fm.Symbols(); len(syms) > 0 {
-					// Inlining to avoid exporting a bunch of stuff from
-					// graphqlbackend
-					symbols := make([]streamhttp.Symbol, 0, len(syms))
-					for _, sym := range syms {
-						u, err := sym.URL(ctx)
-						if err != nil {
-							continue
-						}
-						symbols = append(symbols, streamhttp.Symbol{
-							URL:           u,
-							Name:          sym.Name(),
-							ContainerName: fromStrPtr(sym.ContainerName()),
-							Kind:          sym.Kind(),
-						})
-					}
-					matchesAppend(fromSymbolMatch(fm, symbols))
-				} else {
-					matchesAppend(fromFileMatch(&fm.FileMatch))
-				}
-			}
-			if repo, ok := result.ToRepository(); ok {
-				display = repo.Limit(display)
-
-				matchesAppend(fromRepository(repo.RepoMatch))
-			}
-			if commit, ok := result.ToCommitSearchResult(); ok {
-				display = commit.Limit(display)
-
-				matchesAppend(fromCommit(commit))
-			}
+		repoMetadata := h.getEventRepoMetadata(ctx, event)
+		for _, match := range event.Results {
+			matchesAppend(fromMatch(match, repoMetadata))
 		}
 
 		// Instantly send results if we have not sent any yet.
@@ -305,11 +285,30 @@ func (h *streamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *streamHandler) getEventRepoMetadata(ctx context.Context, event streaming.SearchEvent) map[api.RepoID]*types.Repo {
+	ids := repoIDs(event.Results)
+	if len(ids) == 0 {
+		// Return early if there are no repos in the event
+		return nil
+	}
+
+	repoMetadata := make(map[api.RepoID]*types.Repo, len(ids))
+
+	metadataList, err := database.Repos(h.db).GetByIDs(ctx, ids...)
+	if err != nil {
+		log15.Error("streaming: failed to retrieve repo metadata", "error", err)
+	}
+	for _, repo := range metadataList {
+		repoMetadata[repo.ID] = repo
+	}
+	return repoMetadata
+}
+
 // startSearch will start a search. It returns the events channel which
 // streams out search events. Once events is closed you can call results which
 // will return the results resolver and error.
-func (h *streamHandler) startSearch(ctx context.Context, a *args) (events <-chan graphqlbackend.SearchEvent, inputs graphqlbackend.SearchInputs, results func() (*graphqlbackend.SearchResultsResolver, error)) {
-	eventsC := make(chan graphqlbackend.SearchEvent)
+func (h *streamHandler) startSearch(ctx context.Context, a *args) (events <-chan streaming.SearchEvent, inputs run.SearchInputs, results func() (*graphqlbackend.SearchResultsResolver, error)) {
+	eventsC := make(chan streaming.SearchEvent)
 
 	search, err := h.newSearchResolver(ctx, h.db, &graphqlbackend.SearchArgs{
 		Query:          a.Query,
@@ -317,13 +316,13 @@ func (h *streamHandler) startSearch(ctx context.Context, a *args) (events <-chan
 		PatternType:    strPtr(a.PatternType),
 		VersionContext: strPtr(a.VersionContext),
 
-		Stream: graphqlbackend.StreamFunc(func(event graphqlbackend.SearchEvent) {
+		Stream: streaming.StreamFunc(func(event streaming.SearchEvent) {
 			eventsC <- event
 		}),
 	})
 	if err != nil {
 		close(eventsC)
-		return eventsC, graphqlbackend.SearchInputs{}, func() (*graphqlbackend.SearchResultsResolver, error) {
+		return eventsC, run.SearchInputs{}, func() (*graphqlbackend.SearchResultsResolver, error) {
 			return nil, err
 		}
 	}
@@ -349,7 +348,7 @@ func (h *streamHandler) startSearch(ctx context.Context, a *args) (events <-chan
 
 type searchResolver interface {
 	Results(context.Context) (*graphqlbackend.SearchResultsResolver, error)
-	Inputs() graphqlbackend.SearchInputs
+	Inputs() run.SearchInputs
 }
 
 func defaultNewSearchResolver(ctx context.Context, db dbutil.DB, args *graphqlbackend.SearchArgs) (searchResolver, error) {
@@ -387,7 +386,7 @@ func parseURLQuery(q url.Values) (*args, error) {
 	display := get("display", "-1")
 	var err error
 	if a.Display, err = strconv.Atoi(display); err != nil {
-		return nil, fmt.Errorf("display must be an integer, got %q: %w", display, err)
+		return nil, errors.Errorf("display must be an integer, got %q: %w", display, err)
 	}
 
 	return &a, nil
@@ -407,7 +406,50 @@ func fromStrPtr(s *string) string {
 	return *s
 }
 
-func fromFileMatch(fm *result.FileMatch) *streamhttp.EventFileMatch {
+func fromMatch(match result.Match, repoCache map[api.RepoID]*types.Repo) streamhttp.EventMatch {
+	switch v := match.(type) {
+	case *result.FileMatch:
+		return fromFileMatch(v, repoCache)
+	case *result.RepoMatch:
+		return fromRepository(v, repoCache)
+	case *result.CommitMatch:
+		return fromCommit(v, repoCache)
+	default:
+		panic(fmt.Sprintf("unknown match type %T", v))
+	}
+}
+
+func fromFileMatch(fm *result.FileMatch, repoCache map[api.RepoID]*types.Repo) streamhttp.EventMatch {
+	if len(fm.Symbols) > 0 {
+		return fromSymbolMatch(fm, repoCache)
+	} else if len(fm.LineMatches) > 0 {
+		return fromContentMatch(fm, repoCache)
+	}
+	return fromPathMatch(fm, repoCache)
+}
+
+func fromPathMatch(fm *result.FileMatch, repoCache map[api.RepoID]*types.Repo) *streamhttp.EventPathMatch {
+	var branches []string
+	if fm.InputRev != nil {
+		branches = []string{*fm.InputRev}
+	}
+
+	var stars int
+	if r, ok := repoCache[fm.Repo.ID]; ok {
+		stars = r.Stars
+	}
+
+	return &streamhttp.EventPathMatch{
+		Type:       streamhttp.PathMatchType,
+		Path:       fm.Path,
+		Repository: string(fm.Repo.Name),
+		RepoStars:  stars,
+		Branches:   branches,
+		Version:    string(fm.CommitID),
+	}
+}
+
+func fromContentMatch(fm *result.FileMatch, repoCache map[api.RepoID]*types.Repo) *streamhttp.EventContentMatch {
 	lineMatches := make([]streamhttp.EventLineMatch, 0, len(fm.LineMatches))
 	for _, lm := range fm.LineMatches {
 		lineMatches = append(lineMatches, streamhttp.EventLineMatch{
@@ -422,64 +464,105 @@ func fromFileMatch(fm *result.FileMatch) *streamhttp.EventFileMatch {
 		branches = []string{*fm.InputRev}
 	}
 
-	return &streamhttp.EventFileMatch{
-		Type:        streamhttp.FileMatchType,
+	var stars int
+	if r, ok := repoCache[fm.Repo.ID]; ok {
+		stars = r.Stars
+	}
+
+	return &streamhttp.EventContentMatch{
+		Type:        streamhttp.ContentMatchType,
 		Path:        fm.Path,
 		Repository:  string(fm.Repo.Name),
+		RepoStars:   stars,
 		Branches:    branches,
 		Version:     string(fm.CommitID),
 		LineMatches: lineMatches,
 	}
 }
 
-func fromSymbolMatch(fm *graphqlbackend.FileMatchResolver, symbols []streamhttp.Symbol) *streamhttp.EventSymbolMatch {
+func fromSymbolMatch(fm *result.FileMatch, repoCache map[api.RepoID]*types.Repo) *streamhttp.EventSymbolMatch {
+	symbols := make([]streamhttp.Symbol, 0, len(fm.Symbols))
+	for _, sym := range fm.Symbols {
+		kind := sym.Symbol.LSPKind()
+		kindString := "UNKNOWN"
+		if kind != 0 {
+			kindString = strings.ToUpper(kind.String())
+		}
+
+		symbols = append(symbols, streamhttp.Symbol{
+			URL:           sym.URL().String(),
+			Name:          sym.Symbol.Name,
+			ContainerName: sym.Symbol.Parent,
+			Kind:          kindString,
+		})
+	}
+
 	var branches []string
 	if fm.InputRev != nil {
 		branches = []string{*fm.InputRev}
+	}
+
+	var stars int
+	if r, ok := repoCache[fm.Repo.ID]; ok {
+		stars = r.Stars
 	}
 
 	return &streamhttp.EventSymbolMatch{
 		Type:       streamhttp.SymbolMatchType,
 		Path:       fm.Path,
 		Repository: string(fm.Repo.Name),
+		RepoStars:  stars,
 		Branches:   branches,
 		Version:    string(fm.CommitID),
 		Symbols:    symbols,
 	}
 }
 
-func fromRepository(rm result.RepoMatch) *streamhttp.EventRepoMatch {
+func fromRepository(rm *result.RepoMatch, repoCache map[api.RepoID]*types.Repo) *streamhttp.EventRepoMatch {
 	var branches []string
 	if rev := rm.Rev; rev != "" {
 		branches = []string{rev}
 	}
 
-	return &streamhttp.EventRepoMatch{
+	repoEvent := &streamhttp.EventRepoMatch{
 		Type:       streamhttp.RepoMatchType,
 		Repository: string(rm.Name),
 		Branches:   branches,
 	}
+
+	if r, ok := repoCache[rm.ID]; ok {
+		repoEvent.RepoStars = r.Stars
+		repoEvent.Description = r.Description
+		repoEvent.Fork = r.Fork
+		repoEvent.Archived = r.Archived
+	}
+
+	return repoEvent
 }
 
-func fromCommit(commit *graphqlbackend.CommitSearchResultResolver) *streamhttp.EventCommitMatch {
-	var content string
-	var ranges [][3]int32
-	if matches := commit.Matches(); len(matches) == 1 {
-		match := matches[0]
-		content = match.Body().Text()
-		highlights := match.Highlights()
-		ranges = make([][3]int32, len(highlights))
-		for i, h := range highlights {
-			ranges[i] = [3]int32{h.Line(), h.Character(), h.Length()}
-		}
+func fromCommit(commit *result.CommitMatch, repoCache map[api.RepoID]*types.Repo) *streamhttp.EventCommitMatch {
+	content := commit.Body.Value
+
+	highlights := commit.Body.Highlights
+	ranges := make([][3]int32, len(highlights))
+	for i, h := range highlights {
+		ranges[i] = [3]int32{h.Line, h.Character, h.Length}
 	}
+
+	var stars int
+	if r, ok := repoCache[commit.Repo.ID]; ok {
+		stars = r.Stars
+	}
+
 	return &streamhttp.EventCommitMatch{
-		Type:    streamhttp.CommitMatchType,
-		Label:   commit.Label().Text(),
-		URL:     commit.URL(),
-		Detail:  commit.Detail().Text(),
-		Content: content,
-		Ranges:  ranges,
+		Type:       streamhttp.CommitMatchType,
+		Label:      commit.Label(),
+		URL:        commit.URL().String(),
+		Detail:     commit.Detail(),
+		Repository: string(commit.Repo.Name),
+		RepoStars:  stars,
+		Content:    content,
+		Ranges:     ranges,
 	}
 }
 
@@ -580,4 +663,63 @@ func GuessSource(r *http.Request) trace.SourceType {
 	}
 
 	return trace.SourceOther
+}
+
+// batchEvents takes an event stream and merges events that come through close in time into a single event.
+// This makes downstream database and network operations more efficient by enabling batch reads.
+func batchEvents(source <-chan streaming.SearchEvent, delay time.Duration) <-chan streaming.SearchEvent {
+	results := make(chan streaming.SearchEvent)
+	go func() {
+		defer close(results)
+
+		// Send the first event without a delay
+		firstEvent, ok := <-source
+		if !ok {
+			return
+		}
+		results <- firstEvent
+
+	OUTER:
+		for {
+			// Wait for a first event
+			event, ok := <-source
+			if !ok {
+				return
+			}
+
+			// Wait up to the delay for more events to come through,
+			// and merge any that do into the first event
+			timer := time.After(delay)
+			for {
+				select {
+				case newEvent, ok := <-source:
+					if !ok {
+						// Flush the buffered event and exit
+						results <- event
+						return
+					}
+					event.Results = append(event.Results, newEvent.Results...)
+					event.Stats.Update(&newEvent.Stats)
+				case <-timer:
+					results <- event
+					continue OUTER
+				}
+			}
+		}
+
+	}()
+	return results
+}
+
+func repoIDs(results []result.Match) []api.RepoID {
+	ids := make(map[api.RepoID]struct{}, 5)
+	for _, result := range results {
+		ids[result.RepoName().ID] = struct{}{}
+	}
+
+	res := make([]api.RepoID, 0, len(ids))
+	for id := range ids {
+		res = append(res, id)
+	}
+	return res
 }

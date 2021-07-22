@@ -8,9 +8,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/inconshreveable/log15"
-	"github.com/pkg/errors"
 
 	"github.com/sourcegraph/sourcegraph/internal/lazyregexp"
 )
@@ -20,11 +21,6 @@ type commandRunner interface {
 }
 
 const firecrackerContainerDir = "/work"
-
-var commonFirecrackerFlags = []string{
-	"--runtime", "docker",
-	"--network-plugin", "docker-bridge",
-}
 
 // formatFirecrackerCommand constructs the command to run on the host via a Firecracker
 // virtual machine in order to invoke the given spec. If the spec specifies an image, then
@@ -52,6 +48,15 @@ func formatFirecrackerCommand(spec CommandSpec, name, repoDir string, options Op
 		Operation: spec.Operation,
 	}
 }
+
+// We've recently seen issues with concurent VM creation. It's likely we
+// can do better here and run an empty VM at application startup, but I
+// want to do this quick and dirty to see if we can raise our concurrency
+// without other issues.
+//
+// https://github.com/weaveworks/ignite/issues/559
+// Following up in https://github.com/sourcegraph/sourcegraph/issues/21377.
+var igniteRunLock sync.Mutex
 
 // setupFirecracker invokes a set of commands to provision and prepare a Firecracker virtual
 // machine instance. This is done in several steps:
@@ -109,7 +114,8 @@ func setupFirecracker(ctx context.Context, runner commandRunner, logger *Logger,
 		Key: "setup.firecracker.start",
 		Command: flatten(
 			"ignite", "run",
-			commonFirecrackerFlags,
+			"--runtime", "docker",
+			"--network-plugin", "docker-bridge",
 			firecrackerResourceFlags(options.ResourceOptions),
 			firecrackerCopyfileFlags(repoDir, imageKeys, options),
 			"--ssh",
@@ -118,8 +124,11 @@ func setupFirecracker(ctx context.Context, runner commandRunner, logger *Logger,
 		),
 		Operation: operations.SetupFirecrackerStart,
 	}
-	if err := runner.RunCommand(ctx, startCommand, logger); err != nil {
-		return errors.Wrap(err, "failed to start firecracker vm")
+	igniteRunLock.Lock()
+	err := errors.Wrap(runner.RunCommand(ctx, startCommand, logger), "failed to start firecracker vm")
+	igniteRunLock.Unlock()
+	if err != nil {
+		return err
 	}
 
 	// Load images from tar files
@@ -157,7 +166,7 @@ func setupFirecracker(ctx context.Context, runner commandRunner, logger *Logger,
 func teardownFirecracker(ctx context.Context, runner commandRunner, logger *Logger, name string, options Options, operations *Operations) error {
 	stopCommand := command{
 		Key:       "teardown.firecracker.stop",
-		Command:   flatten("ignite", "stop", commonFirecrackerFlags, name),
+		Command:   flatten("ignite", "stop", name),
 		Operation: operations.TeardownFirecrackerStop,
 	}
 	if err := runner.RunCommand(ctx, stopCommand, logger); err != nil {
@@ -166,7 +175,7 @@ func teardownFirecracker(ctx context.Context, runner commandRunner, logger *Logg
 
 	removeCommand := command{
 		Key:       "teardown.firecracker.remove",
-		Command:   flatten("ignite", "rm", "-f", commonFirecrackerFlags, name),
+		Command:   flatten("ignite", "rm", "-f", name),
 		Operation: operations.TeardownFirecrackerRemove,
 	}
 	if err := runner.RunCommand(ctx, removeCommand, logger); err != nil {
@@ -202,6 +211,7 @@ func firecrackerCopyfileFlags(dir string, imageKeys []string, options Options) [
 	return intersperse("--copy-files", copyfiles)
 }
 
+// NOTE: The options.FirecreackerOptions.ImageArchivesPath needs to exist on the host
 func tarfilePathOnHost(key string, options Options) string {
 	return filepath.Join(options.FirecrackerOptions.ImageArchivesPath, fmt.Sprintf("%s.tar", key))
 }

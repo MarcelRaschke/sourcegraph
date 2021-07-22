@@ -1,16 +1,18 @@
 package dbtest
 
 import (
+	crand "crypto/rand"
 	"database/sql"
+	"encoding/binary"
+	"hash/fnv"
 	"math/rand"
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 	"testing"
-	"time"
 
 	"github.com/lib/pq"
-
 	"github.com/sourcegraph/sourcegraph/internal/database/dbconn"
 )
 
@@ -38,13 +40,26 @@ func NewTx(t testing.TB, db *sql.DB) *sql.Tx {
 	return tx
 }
 
+// Use a shared, locked RNG to avoid issues with multiple concurrent tests getting
+// the same random database number (unlikely, but has been observed).
+// Use crypto/rand.Read() to use an OS source of entropy, since, against all odds,
+// using nanotime was causing conflicts.
+var rng = rand.New(rand.NewSource(func() int64 {
+	b := [8]byte{}
+	if _, err := crand.Read(b[:]); err != nil {
+		panic(err)
+	}
+	return int64(binary.LittleEndian.Uint64(b[:]))
+}()))
+var rngLock sync.Mutex
+
 // NewDB returns a connection to a clean, new temporary testing database
 // with the same schema as Sourcegraph's production Postgres database.
 func NewDB(t testing.TB, dsn string) *sql.DB {
 	var err error
 	var config *url.URL
 	if dsn == "" {
-		config, err = url.Parse("postgres://127.0.0.1/?sslmode=disable&timezone=UTC")
+		config, err = url.Parse("postgres://sourcegraph:sourcegraph@127.0.0.1:5432/sourcegraph?sslmode=disable&timezone=UTC")
 		if err != nil {
 			t.Fatalf("failed to parse dsn %q: %s", dsn, err)
 		}
@@ -56,27 +71,22 @@ func NewDB(t testing.TB, dsn string) *sql.DB {
 		}
 	}
 
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	initTemplateDB(t, config)
+
+	rngLock.Lock()
 	dbname := "sourcegraph-test-" + strconv.FormatUint(rng.Uint64(), 10)
+	rngLock.Unlock()
 
 	db := dbConn(t, config)
-	dbExec(t, db, `CREATE DATABASE `+pq.QuoteIdentifier(dbname))
+	dbExec(t, db, `CREATE DATABASE `+pq.QuoteIdentifier(dbname)+` TEMPLATE `+pq.QuoteIdentifier(templateDBName()))
 
 	config.Path = "/" + dbname
 	testDB := dbConn(t, config)
+	t.Logf("testdb: %s", config.String())
 
-	for _, database := range []*dbconn.Database{
-		dbconn.Frontend,
-		dbconn.CodeIntel,
-	} {
-		m, err := dbconn.NewMigrate(testDB, database)
-		if err != nil {
-			t.Fatalf("failed to construct migrations: %s", err)
-		}
-		if err = dbconn.DoMigrate(m); err != nil {
-			t.Fatalf("failed to apply migrations: %s", err)
-		}
-	}
+	// Some tests that exercise concurrency need lots of connections or they block forever.
+	// e.g. TestIntegration/DBStore/Syncer/MultipleServices
+	testDB.SetMaxOpenConns(10)
 
 	t.Cleanup(func() {
 		defer db.Close()
@@ -96,7 +106,62 @@ func NewDB(t testing.TB, dsn string) *sql.DB {
 	return testDB
 }
 
+var templateOnce sync.Once
+
+// initTemplateDB creates a template database with a fully migrated schema for the
+// current package. New databases can then do a cheap copy of the migrated schema
+// rather than running the full migration every time.
+func initTemplateDB(t testing.TB, config *url.URL) {
+	templateOnce.Do(func() {
+		templateName := templateDBName()
+		db := dbConn(t, config)
+		// We must first drop the template database because
+		// migrations would not run on it if they had already ran,
+		// even if the content of the migrations had changed during development.
+		name := pq.QuoteIdentifier(templateName)
+		dbExec(t, db, `DROP DATABASE IF EXISTS `+name)
+		dbExec(t, db, `CREATE DATABASE `+name+` TEMPLATE template0`)
+		defer db.Close()
+
+		cfgCopy := *config
+		cfgCopy.Path = "/" + templateName
+		templateDB := dbConn(t, &cfgCopy)
+		defer templateDB.Close()
+
+		for _, database := range []*dbconn.Database{
+			dbconn.Frontend,
+			dbconn.CodeIntel,
+		} {
+			m, err := dbconn.NewMigrate(templateDB, database)
+			if err != nil {
+				t.Fatalf("failed to construct migrations: %s", err)
+			}
+			defer m.Close()
+			if err = dbconn.DoMigrate(m); err != nil {
+				t.Fatalf("failed to apply migrations: %s", err)
+			}
+		}
+	})
+}
+
+// templateDBName returns the name of the template database
+// for the currently running package.
+func templateDBName() string {
+	return "sourcegraph-test-template-" + wdHash()
+}
+
+// wdHash returns a hash of the current working directory.
+// This is useful to get a stable identifier for the package running
+// the tests.
+func wdHash() string {
+	h := fnv.New64()
+	wd, _ := os.Getwd()
+	h.Write([]byte(wd))
+	return strconv.Itoa(int(h.Sum64()))
+}
+
 func dbConn(t testing.TB, cfg *url.URL) *sql.DB {
+	t.Helper()
 	db, err := dbconn.NewRaw(cfg.String())
 	if err != nil {
 		t.Fatalf("failed to connect to database %q: %s", cfg, err)
@@ -105,6 +170,7 @@ func dbConn(t testing.TB, cfg *url.URL) *sql.DB {
 }
 
 func dbExec(t testing.TB, db *sql.DB, q string, args ...interface{}) {
+	t.Helper()
 	_, err := db.Exec(q, args...)
 	if err != nil {
 		t.Errorf("failed to exec %q: %s", q, err)

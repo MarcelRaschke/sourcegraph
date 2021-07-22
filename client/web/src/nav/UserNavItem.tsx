@@ -1,6 +1,8 @@
 import { Shortcut } from '@slimsag/react-shortcuts'
 import classNames from 'classnames'
 import * as H from 'history'
+import ChevronDownIcon from 'mdi-react/ChevronDownIcon'
+import ChevronUpIcon from 'mdi-react/ChevronUpIcon'
 import MenuDownIcon from 'mdi-react/MenuDownIcon'
 import MenuUpIcon from 'mdi-react/MenuUpIcon'
 import OpenInNewIcon from 'mdi-react/OpenInNewIcon'
@@ -10,24 +12,30 @@ import { ButtonDropdown, DropdownItem, DropdownMenu, DropdownToggle, Tooltip } f
 
 import { KeyboardShortcut } from '@sourcegraph/shared/src/keyboardShortcuts'
 import { ThemeProps } from '@sourcegraph/shared/src/theme'
+import { useRedesignToggle } from '@sourcegraph/shared/src/util/useRedesignToggle'
 import { useTimeoutManager } from '@sourcegraph/shared/src/util/useTimeoutManager'
 
 import { AuthenticatedUser } from '../auth'
+import { Badge } from '../components/Badge'
+import { SearchContextProps } from '../search'
 import { ThemePreference, ThemePreferenceProps } from '../theme'
 import { UserAvatar } from '../user/UserAvatar'
 
-import { RedesignToggle } from './RedesignToggle'
-
-export interface UserNavItemProps extends ThemeProps, ThemePreferenceProps, ExtensionAlertAnimationProps {
+export interface UserNavItemProps
+    extends ThemeProps,
+        ThemePreferenceProps,
+        ExtensionAlertAnimationProps,
+        Pick<SearchContextProps, 'showSearchContext' | 'showSearchContextManagement'> {
     location: H.Location
     authenticatedUser: Pick<
         AuthenticatedUser,
-        'username' | 'avatarURL' | 'settingsURL' | 'organizations' | 'siteAdmin' | 'session'
+        'username' | 'avatarURL' | 'settingsURL' | 'organizations' | 'siteAdmin' | 'session' | 'displayName'
     >
     showDotComMarketing: boolean
     keyboardShortcutForSwitchTheme?: KeyboardShortcut
     testIsOpen?: boolean
     codeHostIntegrationMessaging: 'browser-extension' | 'native-integration'
+    showRepositorySection?: boolean
 }
 
 export interface ExtensionAlertAnimationProps {
@@ -101,8 +109,17 @@ export const UserNavItem: React.FunctionComponent<UserNavItemProps> = props => {
         onThemePreferenceChange(themePreference === ThemePreference.Dark ? ThemePreference.Light : ThemePreference.Dark)
     }, [onThemePreferenceChange, themePreference])
 
+    const [isRedesignEnabled] = useRedesignToggle()
+
     // Target ID for tooltip
     const targetID = 'target-user-avatar'
+
+    const MenuDropdownIcon = (): JSX.Element => {
+        const UpIcon = isRedesignEnabled ? ChevronUpIcon : MenuUpIcon
+        const DownIcon = isRedesignEnabled ? ChevronDownIcon : MenuDownIcon
+
+        return isOpen ? <UpIcon className="icon-inline" /> : <DownIcon className="icon-inline" />
+    }
 
     return (
         <ButtonDropdown isOpen={isOpen} toggle={toggleIsOpen} className="py-0" aria-label="User. Open menu">
@@ -110,11 +127,16 @@ export const UserNavItem: React.FunctionComponent<UserNavItemProps> = props => {
                 <div className="position-relative">
                     <div
                         className={classNames('align-items-center d-flex', {
-                            'user-nav-item__avatar-background': isExtensionAlertAnimating,
+                            // Temporarily remove user avatar flash animation for redesign
+                            // 'user-nav-item__avatar-background': isExtensionAlertAnimating,
                         })}
                     >
-                        <UserAvatar user={props.authenticatedUser} targetID={targetID} className="icon-inline" />
-                        {isOpen ? <MenuUpIcon className="icon-inline" /> : <MenuDownIcon className="icon-inline" />}
+                        <UserAvatar
+                            user={props.authenticatedUser}
+                            targetID={targetID}
+                            className="icon-inline user-nav-item__avatar"
+                        />
+                        <MenuDropdownIcon />
                     </div>
                 </div>
                 {isExtensionAlertAnimating && (
@@ -144,6 +166,19 @@ export const UserNavItem: React.FunctionComponent<UserNavItemProps> = props => {
                 <Link to="/extensions" className="dropdown-item">
                     Extensions
                 </Link>
+                {props.showRepositorySection && (
+                    <Link
+                        to={`/users/${props.authenticatedUser.username}/settings/repositories`}
+                        className="dropdown-item"
+                    >
+                        Repositories <Badge className="ml-1" status="new" />
+                    </Link>
+                )}
+                {props.showSearchContext && props.showSearchContextManagement && (
+                    <Link to="/contexts" className="dropdown-item">
+                        Search contexts <Badge className="ml-1" status="new" />
+                    </Link>
+                )}
                 <Link to={`/users/${props.authenticatedUser.username}/searches`} className="dropdown-item">
                     Saved searches
                 </Link>
@@ -179,8 +214,6 @@ export const UserNavItem: React.FunctionComponent<UserNavItemProps> = props => {
                         <Shortcut key={index} {...keybinding} onMatch={onThemeCycle} />
                     ))}
                 </div>
-                {/* NODE_ENV check ensures that this logic won't propagate to non-dev builds via Webpack dead code elimination */}
-                {process.env.NODE_ENV === 'development' && <RedesignToggle />}
                 {props.authenticatedUser.organizations.nodes.length > 0 && (
                     <>
                         <DropdownItem divider={true} />

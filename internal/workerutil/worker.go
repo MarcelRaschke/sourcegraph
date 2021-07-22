@@ -5,11 +5,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/derision-test/glock"
 	"github.com/inconshreveable/log15"
-	"github.com/pkg/errors"
 
 	"github.com/sourcegraph/sourcegraph/internal/errcode"
+	"github.com/sourcegraph/sourcegraph/internal/hostname"
 	"github.com/sourcegraph/sourcegraph/internal/observation"
 )
 
@@ -32,6 +33,11 @@ type WorkerOptions struct {
 	// supplied.
 	Name string
 
+	// WorkerHostname denotes the hostname of the instance/container the worker
+	// is running on. If not supplied, it will be derived from either the `HOSTNAME`
+	// env var, or else from os.Hostname()
+	WorkerHostname string
+
 	// NumHandlers is the maximum number of handlers that can be invoked
 	// concurrently. The underlying store will not be queried while the current
 	// number of handlers exceeds this value.
@@ -39,6 +45,11 @@ type WorkerOptions struct {
 
 	// Interval is the frequency to poll the underlying store for new work.
 	Interval time.Duration
+
+	// HeartbeatInterval is the interval between heartbeat updates to a job's last_heartbeat_at field. This
+	// field is periodically updated while being actively processed to signal to other workers that the
+	// record is neither pending nor abandoned.
+	HeartbeatInterval time.Duration
 
 	// Metrics configures logging, tracing, and metrics for the work loop.
 	Metrics WorkerMetrics
@@ -51,6 +62,10 @@ func NewWorker(ctx context.Context, store Store, handler Handler, options Worker
 func newWorker(ctx context.Context, store Store, handler Handler, options WorkerOptions, clock glock.Clock) *Worker {
 	if options.Name == "" {
 		panic("no name supplied to github.com/sourcegraph/sourcegraph/internal/workerutil:newWorker")
+	}
+
+	if options.WorkerHostname == "" {
+		options.WorkerHostname = hostname.Get()
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -80,11 +95,9 @@ loop:
 	for {
 		ok, err := w.dequeueAndHandle()
 		if err != nil {
-			// If the error is due to the loop being shut down, just break
-			for ex := err; ex != nil; ex = errors.Unwrap(ex) {
-				if err == w.ctx.Err() {
-					break loop
-				}
+			if w.ctx.Err() != nil && errors.Is(err, w.ctx.Err()) {
+				// If the error is due to the loop being shut down, just break
+				break loop
 			}
 
 			log15.Error("Failed to dequeue and handle record", "name", w.options.Name, "err", err)
@@ -147,7 +160,7 @@ func (w *Worker) dequeueAndHandle() (dequeued bool, err error) {
 	}
 
 	// Select a queued record to process and the transaction that holds it
-	record, tx, dequeued, err := w.store.Dequeue(w.ctx, extraDequeueArguments)
+	record, dequeued, err := w.store.Dequeue(w.ctx, w.options.WorkerHostname, extraDequeueArguments)
 	if err != nil {
 		return false, errors.Wrap(err, "store.Dequeue")
 	}
@@ -155,6 +168,26 @@ func (w *Worker) dequeueAndHandle() (dequeued bool, err error) {
 		// Nothing to process
 		return false, nil
 	}
+
+	// Create a background routine that periodically writes the current time to the record.
+	// This will keep a record claimed by an active worker for a small amount of time so that
+	// it will not be processed by a second worker concurrently.
+
+	heartbeatCtx, cancel := context.WithCancel(w.ctx)
+	go func() {
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				return
+			case <-w.clock.After(w.options.HeartbeatInterval):
+			}
+
+			id := record.RecordID()
+			if err := w.store.Heartbeat(heartbeatCtx, id); err != nil {
+				log15.Error("Failed to refresh last_heartbeat_at", "name", w.options.Name, "id", id, "error", err)
+			}
+		}
+	}()
 
 	w.options.Metrics.numJobs.Inc()
 	log15.Debug("Dequeued record for processing", "name", w.options.Name, "id", record.RecordID())
@@ -171,12 +204,13 @@ func (w *Worker) dequeueAndHandle() (dequeued bool, err error) {
 				hook.PostHandle(w.ctx, record)
 			}
 
+			cancel()
 			w.options.Metrics.numJobs.Dec()
 			w.handlerSemaphore <- struct{}{}
 			w.wg.Done()
 		}()
 
-		if err := w.handle(tx, record); err != nil {
+		if err := w.handle(record); err != nil {
 			log15.Error("Failed to finalize record", "name", w.options.Name, "err", err)
 		}
 	}()
@@ -184,35 +218,28 @@ func (w *Worker) dequeueAndHandle() (dequeued bool, err error) {
 	return true, nil
 }
 
-// handle processes the given record locked by the given transaction. This method returns an
-// error only if there is an issue committing the transaction - no handler errors will bubble
-// up.
-func (w *Worker) handle(tx Store, record Record) (err error) {
+// handle processes the given record. This method returns an error only if there is an issue updating
+// the record to a terminal state - no handler errors will bubble up.
+func (w *Worker) handle(record Record) (err error) {
 	ctx, endOperation := w.options.Metrics.operations.handle.With(w.ctx, &err, observation.Args{})
 	defer endOperation(1, observation.Args{})
 
-	defer func() {
-		// Notice that we will commit the transaction even on error from the handler
-		// function. We will only rollback the transaction if we fail to mark the job
-		// as completed or errored.
-		err = tx.Done(err)
-	}()
+	handleErr := w.handler.Handle(ctx, record)
 
-	handleErr := w.handler.Handle(ctx, tx, record)
 	if errcode.IsNonRetryable(handleErr) {
-		if marked, markErr := tx.MarkFailed(ctx, record.RecordID(), handleErr.Error()); markErr != nil {
+		if marked, markErr := w.store.MarkFailed(ctx, record.RecordID(), handleErr.Error()); markErr != nil {
 			return errors.Wrap(markErr, "store.MarkFailed")
 		} else if marked {
 			log15.Warn("Marked record as failed", "name", w.options.Name, "id", record.RecordID(), "err", handleErr)
 		}
 	} else if handleErr != nil {
-		if marked, markErr := tx.MarkErrored(ctx, record.RecordID(), handleErr.Error()); markErr != nil {
+		if marked, markErr := w.store.MarkErrored(ctx, record.RecordID(), handleErr.Error()); markErr != nil {
 			return errors.Wrap(markErr, "store.MarkErrored")
 		} else if marked {
 			log15.Warn("Marked record as errored", "name", w.options.Name, "id", record.RecordID(), "err", handleErr)
 		}
 	} else {
-		if marked, markErr := tx.MarkComplete(ctx, record.RecordID()); markErr != nil {
+		if marked, markErr := w.store.MarkComplete(ctx, record.RecordID()); markErr != nil {
 			return errors.Wrap(markErr, "store.MarkComplete")
 		} else if marked {
 			log15.Debug("Marked record as complete", "name", w.options.Name, "id", record.RecordID())

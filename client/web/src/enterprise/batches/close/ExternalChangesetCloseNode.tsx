@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import * as H from 'history'
 import ChevronDownIcon from 'mdi-react/ChevronDownIcon'
 import ChevronRightIcon from 'mdi-react/ChevronRightIcon'
@@ -11,7 +12,7 @@ import { ThemeProps } from '@sourcegraph/shared/src/theme'
 import { RepoSpec, RevisionSpec, FileSpec, ResolvedRevisionSpec } from '@sourcegraph/shared/src/util/url'
 
 import { ErrorAlert } from '../../../components/alerts'
-import { DiffStat } from '../../../components/diff/DiffStat'
+import { DiffStatStack } from '../../../components/diff/DiffStat'
 import { ExternalChangesetFields } from '../../../graphql-operations'
 import { queryExternalChangesetWithFileDiffs as _queryExternalChangesetWithFileDiffs } from '../detail/backend'
 import { ChangesetCheckStatusCell } from '../detail/changesets/ChangesetCheckStatusCell'
@@ -20,6 +21,7 @@ import { ChangesetReviewStatusCell } from '../detail/changesets/ChangesetReviewS
 import { ExternalChangesetInfoCell } from '../detail/changesets/ExternalChangesetInfoCell'
 
 import { ChangesetCloseActionClose, ChangesetCloseActionKept } from './ChangesetCloseAction'
+import styles from './ExternalChangesetCloseNode.module.scss'
 
 export interface ExternalChangesetCloseNodeProps extends ThemeProps {
     node: ExternalChangesetFields
@@ -68,19 +70,24 @@ export const ExternalChangesetCloseNode: React.FunctionComponent<ExternalChanges
                 )}
             </button>
             {willClose ? (
-                <ChangesetCloseActionClose className="external-changeset-close-node__action" />
+                <ChangesetCloseActionClose className={styles.externalChangesetCloseNodeAction} />
             ) : (
-                <ChangesetCloseActionKept className="external-changeset-close-node__action" />
+                <ChangesetCloseActionKept className={styles.externalChangesetCloseNodeAction} />
             )}
             <ExternalChangesetInfoCell
                 node={node}
                 viewerCanAdminister={viewerCanAdminister}
-                className="external-changeset-close-node__information"
+                className={styles.externalChangesetCloseNodeInformation}
             />
-            <div className="d-flex d-md-none justify-content-start external-changeset-close-node__statuses">
+            <div
+                className={classNames(
+                    styles.externalChangesetCloseNodeStatuses,
+                    'd-flex d-md-none justify-content-start'
+                )}
+            >
                 {node.checkState && <ChangesetCheckStatusCell checkState={node.checkState} className="mr-3" />}
                 {node.reviewState && <ChangesetReviewStatusCell reviewState={node.reviewState} className="mr-3" />}
-                {node.diffStat && <DiffStat {...node.diffStat} expandedCounts={true} separateLines={true} />}
+                {node.diffStat && <DiffStatStack {...node.diffStat} />}
             </div>
             <span className="d-none d-md-inline">
                 {node.checkState && <ChangesetCheckStatusCell checkState={node.checkState} />}
@@ -89,14 +96,17 @@ export const ExternalChangesetCloseNode: React.FunctionComponent<ExternalChanges
                 {node.reviewState && <ChangesetReviewStatusCell reviewState={node.reviewState} />}
             </span>
             <div className="d-none d-md-flex justify-content-center">
-                {node.diffStat && <DiffStat {...node.diffStat} expandedCounts={true} separateLines={true} />}
+                {node.diffStat && <DiffStatStack {...node.diffStat} />}
             </div>
             {/* The button for expanding the information used on xs devices. */}
             <button
                 type="button"
                 aria-label={isExpanded ? 'Collapse section' : 'Expand section'}
                 onClick={toggleIsExpanded}
-                className="external-changeset-close-node__show-details btn btn-outline-secondary d-block d-sm-none test-batches-expand-changeset"
+                className={classNames(
+                    styles.externalChangesetCloseNodeShowDetails,
+                    'btn btn-outline-secondary d-block d-sm-none test-batches-expand-changeset'
+                )}
             >
                 {isExpanded ? (
                     <ChevronDownIcon className="icon-inline" aria-label="Close section" />
@@ -106,7 +116,7 @@ export const ExternalChangesetCloseNode: React.FunctionComponent<ExternalChanges
                 {isExpanded ? 'Hide' : 'Show'} details
             </button>
             {isExpanded && (
-                <div className="external-changeset-close-node__expanded-section p-2">
+                <div className={classNames(styles.externalChangesetCloseNodeExpandedSection, 'p-2')}>
                     {node.error && <ErrorAlert error={node.error} />}
                     <ChangesetFileDiff
                         changesetID={node.id}

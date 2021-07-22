@@ -13,11 +13,11 @@ import { PanelViewWithComponent } from '../Panel'
 
 import { EmptyPanelView } from './EmptyPanelView'
 import { HierarchicalLocationsView } from './HierarchicalLocationsView'
+import styles from './PanelView.module.scss'
 
 interface Props extends ExtensionsControllerProps, SettingsCascadeProps, VersionContextProps {
     panelView: PanelViewWithComponent
     repoName?: string
-    history: H.History
     location: H.Location
     isLightTheme: boolean
     fetchHighlightedFileLineRanges: (parameters: FetchFileParameters, force?: boolean) => Observable<string[][]>
@@ -27,10 +27,10 @@ interface Props extends ExtensionsControllerProps, SettingsCascadeProps, Version
  * A panel view contributed by an extension using {@link sourcegraph.app.createPanelView}.
  */
 export const PanelView = React.memo<Props>(props => (
-    <div className="panel__tabs-content panel__tabs-content--scroll">
+    <div className={styles.panelView}>
         {props.panelView.content && (
             <div className="px-2 pt-2">
-                <Markdown dangerousInnerHTML={renderMarkdown(props.panelView.content)} history={props.history} />
+                <Markdown dangerousInnerHTML={renderMarkdown(props.panelView.content)} />
             </div>
         )}
         {props.panelView.reactElement}

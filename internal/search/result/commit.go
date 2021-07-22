@@ -1,16 +1,19 @@
 package result
 
 import (
+	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/sourcegraph/sourcegraph/internal/search/filter"
 	"github.com/sourcegraph/sourcegraph/internal/types"
 	"github.com/sourcegraph/sourcegraph/internal/vcs/git"
+	"github.com/xeonx/timeago"
 )
 
 type CommitMatch struct {
 	Commit         git.Commit
-	RepoName       types.RepoName
+	Repo           types.RepoName
 	Refs           []string
 	SourceRefs     []string
 	MessagePreview *HighlightedString
@@ -32,6 +35,10 @@ func (r *CommitMatch) ResultCount() int {
 	return 1
 }
 
+func (r *CommitMatch) RepoName() types.RepoName {
+	return r.Repo
+}
+
 func (r *CommitMatch) Limit(limit int) int {
 	if len(r.Body.Highlights) == 0 {
 		return limit - 1 // just counting the commit
@@ -43,28 +50,72 @@ func (r *CommitMatch) Limit(limit int) int {
 }
 
 func (r *CommitMatch) Select(path filter.SelectPath) Match {
-	switch path.Type {
+	switch path.Root() {
 	case filter.Repository:
 		return &RepoMatch{
-			Name: r.RepoName.Name,
-			ID:   r.RepoName.ID,
+			Name: r.Repo.Name,
+			ID:   r.Repo.ID,
 		}
 	case filter.Commit:
-		if len(path.Fields) > 0 && path.Fields[0] == "diff" {
+		fields := path[1:]
+		if len(fields) > 0 && fields[0] == "diff" {
 			if r.DiffPreview == nil {
 				return nil // Not a diff result.
 			}
-			if len(path.Fields) == 1 {
+			if len(fields) == 1 {
 				return r
 			}
-			if len(path.Fields) == 2 {
-				return selectCommitDiffKind(r, path.Fields[1])
+			if len(fields) == 2 {
+				return selectCommitDiffKind(r, fields[1])
 			}
 			return nil
 		}
 		return r
 	}
 	return nil
+}
+
+// Key implements Match interface's Key() method
+func (r *CommitMatch) Key() Key {
+	typeRank := rankCommitMatch
+	if r.DiffPreview != nil {
+		typeRank = rankDiffMatch
+	}
+	return Key{
+		TypeRank: typeRank,
+		Repo:     r.Repo.Name,
+		Commit:   r.Commit.ID,
+	}
+}
+
+func (r *CommitMatch) Label() string {
+	message := r.Commit.Message.Subject()
+	author := r.Commit.Author.Name
+	repoName := displayRepoName(string(r.Repo.Name))
+	repoURL := (&RepoMatch{Name: r.Repo.Name, ID: r.Repo.ID}).URL().String()
+	commitURL := r.URL().String()
+
+	return fmt.Sprintf("[%s](%s) › [%s](%s): [%s](%s)", repoName, repoURL, author, commitURL, message, commitURL)
+}
+
+func (r *CommitMatch) Detail() string {
+	commitHash := r.Commit.ID.Short()
+	timeagoConfig := timeago.NoMax(timeago.English)
+	return fmt.Sprintf("[`%v` %v](%v)", commitHash, timeagoConfig.Format(r.Commit.Author.Date), r.URL())
+}
+
+func (r *CommitMatch) URL() *url.URL {
+	u := (&RepoMatch{Name: r.Repo.Name, ID: r.Repo.ID}).URL()
+	u.Path = u.Path + "/-/commit/" + string(r.Commit.ID)
+	return u
+}
+
+func displayRepoName(repoPath string) string {
+	parts := strings.Split(repoPath, "/")
+	if len(parts) >= 3 && strings.Contains(parts[0], ".") {
+		parts = parts[1:] // remove hostname from repo path (reduce visual noise)
+	}
+	return strings.Join(parts, "/")
 }
 
 // selectModifiedLines extracts the highlight ranges that correspond to lines

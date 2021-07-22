@@ -2,9 +2,8 @@ package graphqlbackend
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
+	"github.com/cockroachdb/errors"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/graph-gophers/graphql-go/relay"
 	"github.com/inconshreveable/log15"
@@ -28,7 +27,7 @@ func (r *schemaResolver) User(ctx context.Context, args struct {
 }) (*UserResolver, error) {
 	switch {
 	case args.Username != nil:
-		user, err := database.GlobalUsers.GetByUsername(ctx, *args.Username)
+		user, err := database.Users(r.db).GetByUsername(ctx, *args.Username)
 		if err != nil {
 			return nil, err
 		}
@@ -38,11 +37,11 @@ func (r *schemaResolver) User(ctx context.Context, args struct {
 		// 🚨 SECURITY: Only site admins are allowed to look up by email address on Sourcegraph.com, for
 		// user privacy reasons.
 		if envvar.SourcegraphDotComMode() {
-			if err := backend.CheckCurrentUserIsSiteAdmin(ctx); err != nil {
+			if err := backend.CheckCurrentUserIsSiteAdmin(ctx, r.db); err != nil {
 				return nil, err
 			}
 		}
-		user, err := database.GlobalUsers.GetByVerifiedEmail(ctx, *args.Email)
+		user, err := database.Users(r.db).GetByVerifiedEmail(ctx, *args.Email)
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +76,7 @@ func UserByID(ctx context.Context, db dbutil.DB, id graphql.ID) (*UserResolver, 
 // UserByIDInt32 looks up and returns the user with the given database ID. If no such user exists,
 // it returns a non-nil error.
 func UserByIDInt32(ctx context.Context, db dbutil.DB, id int32) (*UserResolver, error) {
-	user, err := database.GlobalUsers.GetByID(ctx, id)
+	user, err := database.Users(db).GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -100,11 +99,11 @@ func (r *UserResolver) DatabaseID() int32 { return r.user.ID }
 // Deprecated: use Emails instead.
 func (r *UserResolver) Email(ctx context.Context) (string, error) {
 	// 🚨 SECURITY: Only the user and admins are allowed to access the email address.
-	if err := backend.CheckSiteAdminOrSameUser(ctx, r.user.ID); err != nil {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, r.db, r.user.ID); err != nil {
 		return "", err
 	}
 
-	email, _, err := database.GlobalUserEmails.GetPrimaryEmail(ctx, r.user.ID)
+	email, _, err := database.UserEmails(r.db).GetPrimaryEmail(ctx, r.user.ID)
 	if err != nil && !errcode.IsNotFound(err) {
 		return "", err
 	}
@@ -153,11 +152,11 @@ func (r *UserResolver) settingsSubject() api.SettingsSubject {
 func (r *UserResolver) LatestSettings(ctx context.Context) (*settingsResolver, error) {
 	// 🚨 SECURITY: Only the user and admins are allowed to access the user's settings, because they
 	// may contain secrets or other sensitive data.
-	if err := backend.CheckSiteAdminOrSameUser(ctx, r.user.ID); err != nil {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, r.db, r.user.ID); err != nil {
 		return nil, err
 	}
 
-	settings, err := database.GlobalSettings.GetLatest(ctx, r.settingsSubject())
+	settings, err := database.Settings(r.db).GetLatest(ctx, r.settingsSubject())
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +174,7 @@ func (r *UserResolver) ConfigurationCascade() *settingsCascade { return r.Settin
 
 func (r *UserResolver) SiteAdmin(ctx context.Context) (bool, error) {
 	// 🚨 SECURITY: Only the user and admins are allowed to determine if the user is a site admin.
-	if err := backend.CheckSiteAdminOrSameUser(ctx, r.user.ID); err != nil {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, r.db, r.user.ID); err != nil {
 		return false, err
 	}
 
@@ -196,7 +195,7 @@ func (r *schemaResolver) UpdateUser(ctx context.Context, args *updateUserArgs) (
 	}
 
 	// 🚨 SECURITY: Only the user and site admins are allowed to update the user.
-	if err := backend.CheckSiteAdminOrSameUser(ctx, userID); err != nil {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, r.db, userID); err != nil {
 		return nil, err
 	}
 
@@ -210,13 +209,13 @@ func (r *schemaResolver) UpdateUser(ctx context.Context, args *updateUserArgs) (
 		DisplayName: args.DisplayName,
 		AvatarURL:   args.AvatarURL,
 	}
-	if args.Username != nil && viewerIsChangingUsername(ctx, userID, *args.Username) {
-		if !viewerCanChangeUsername(ctx, userID) {
-			return nil, fmt.Errorf("unable to change username because auth.enableUsernameChanges is false in site configuration")
+	if args.Username != nil && viewerIsChangingUsername(ctx, r.db, userID, *args.Username) {
+		if !viewerCanChangeUsername(ctx, r.db, userID) {
+			return nil, errors.Errorf("unable to change username because auth.enableUsernameChanges is false in site configuration")
 		}
 		update.Username = *args.Username
 	}
-	if err := database.GlobalUsers.Update(ctx, userID, update); err != nil {
+	if err := database.Users(r.db).Update(ctx, userID, update); err != nil {
 		return nil, err
 	}
 	return UserByIDInt32(ctx, r.db, userID)
@@ -225,7 +224,7 @@ func (r *schemaResolver) UpdateUser(ctx context.Context, args *updateUserArgs) (
 // CurrentUser returns the authenticated user if any. If there is no authenticated user, it returns
 // (nil, nil). If some other error occurs, then the error is returned.
 func CurrentUser(ctx context.Context, db dbutil.DB) (*UserResolver, error) {
-	user, err := database.GlobalUsers.GetByCurrentAuthUser(ctx)
+	user, err := database.Users(db).GetByCurrentAuthUser(ctx)
 	if err != nil {
 		if errcode.IsNotFound(err) || err == database.ErrNoCurrentUser {
 			return nil, nil
@@ -236,7 +235,7 @@ func CurrentUser(ctx context.Context, db dbutil.DB) (*UserResolver, error) {
 }
 
 func (r *UserResolver) Organizations(ctx context.Context) (*orgConnectionStaticResolver, error) {
-	orgs, err := database.GlobalOrgs.GetByUserID(ctx, r.user.ID)
+	orgs, err := database.Orgs(r.db).GetByUserID(ctx, r.user.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +248,7 @@ func (r *UserResolver) Organizations(ctx context.Context) (*orgConnectionStaticR
 
 func (r *UserResolver) Tags(ctx context.Context) ([]string, error) {
 	// 🚨 SECURITY: Only the user and admins are allowed to access the user's tags.
-	if err := backend.CheckSiteAdminOrSameUser(ctx, r.user.ID); err != nil {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, r.db, r.user.ID); err != nil {
 		return nil, err
 	}
 	return r.user.Tags, nil
@@ -257,7 +256,7 @@ func (r *UserResolver) Tags(ctx context.Context) ([]string, error) {
 
 func (r *UserResolver) SurveyResponses(ctx context.Context) ([]*surveyResponseResolver, error) {
 	// 🚨 SECURITY: Only the user and admins are allowed to access the user's survey responses.
-	if err := backend.CheckSiteAdminOrSameUser(ctx, r.user.ID); err != nil {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, r.db, r.user.ID); err != nil {
 		return nil, err
 	}
 
@@ -273,7 +272,7 @@ func (r *UserResolver) SurveyResponses(ctx context.Context) ([]*surveyResponseRe
 }
 
 func (r *UserResolver) ViewerCanAdminister(ctx context.Context) (bool, error) {
-	if err := backend.CheckSiteAdminOrSameUser(ctx, r.user.ID); errcode.IsUnauthorized(err) {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, r.db, r.user.ID); errcode.IsUnauthorized(err) {
 		return false, nil
 	} else if err != nil {
 		return false, err
@@ -296,7 +295,7 @@ func (r *schemaResolver) UpdatePassword(ctx context.Context, args *struct {
 	NewPassword string
 }) (*EmptyResponse, error) {
 	// 🚨 SECURITY: A user can only change their own password.
-	user, err := database.GlobalUsers.GetByCurrentAuthUser(ctx)
+	user, err := database.Users(r.db).GetByCurrentAuthUser(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +303,7 @@ func (r *schemaResolver) UpdatePassword(ctx context.Context, args *struct {
 		return nil, errors.New("no authenticated user")
 	}
 
-	if err := database.GlobalUsers.UpdatePassword(ctx, user.ID, args.OldPassword, args.NewPassword); err != nil {
+	if err := database.Users(r.db).UpdatePassword(ctx, user.ID, args.OldPassword, args.NewPassword); err != nil {
 		return nil, err
 	}
 
@@ -320,14 +319,14 @@ func (r *schemaResolver) CreatePassword(ctx context.Context, args *struct {
 	NewPassword string
 }) (*EmptyResponse, error) {
 	// 🚨 SECURITY: A user can only create their own password.
-	user, err := database.GlobalUsers.GetByCurrentAuthUser(ctx)
+	user, err := database.Users(r.db).GetByCurrentAuthUser(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if user == nil {
 		return nil, errors.New("no authenticated user")
 	}
-	if err := database.GlobalUsers.CreatePassword(ctx, user.ID, args.NewPassword); err != nil {
+	if err := database.Users(r.db).CreatePassword(ctx, user.ID, args.NewPassword); err != nil {
 		return nil, err
 	}
 
@@ -341,7 +340,7 @@ func (r *schemaResolver) CreatePassword(ctx context.Context, args *struct {
 
 // ViewerCanChangeUsername returns if the current user can change the username of the user.
 func (r *UserResolver) ViewerCanChangeUsername(ctx context.Context) bool {
-	return viewerCanChangeUsername(ctx, r.user.ID)
+	return viewerCanChangeUsername(ctx, r.db, r.user.ID)
 }
 
 // TODO(campaigns-deprecation):
@@ -433,15 +432,15 @@ func (r *UserResolver) BatchChangesCodeHosts(ctx context.Context, args *ListBatc
 	return EnterpriseResolvers.batchChangesResolver.BatchChangesCodeHosts(ctx, args)
 }
 
-func viewerCanChangeUsername(ctx context.Context, userID int32) bool {
-	if err := backend.CheckSiteAdminOrSameUser(ctx, userID); err != nil {
+func viewerCanChangeUsername(ctx context.Context, db dbutil.DB, userID int32) bool {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, db, userID); err != nil {
 		return false
 	}
 	if conf.Get().AuthEnableUsernameChanges {
 		return true
 	}
 	// 🚨 SECURITY: Only site admins are allowed to change a user's username when auth.enableUsernameChanges == false.
-	return backend.CheckCurrentUserIsSiteAdmin(ctx) == nil
+	return backend.CheckCurrentUserIsSiteAdmin(ctx, db) == nil
 }
 
 // Users may be trying to change their own username, or someone else's.
@@ -452,8 +451,8 @@ func viewerCanChangeUsername(ctx context.Context, userID int32) bool {
 //
 // If that subject's username is different from the proposed one, then a
 // change is being attempted and may be rejected by viewerCanChangeUsername.
-func viewerIsChangingUsername(ctx context.Context, subjectUserID int32, proposedUsername string) bool {
-	subject, err := database.GlobalUsers.GetByID(ctx, subjectUserID)
+func viewerIsChangingUsername(ctx context.Context, db dbutil.DB, subjectUserID int32, proposedUsername string) bool {
+	subject, err := database.Users(db).GetByID(ctx, subjectUserID)
 	if err != nil {
 		log15.Warn("viewerIsChangingUsername", "error", err)
 		return true
@@ -462,14 +461,14 @@ func viewerIsChangingUsername(ctx context.Context, subjectUserID int32, proposed
 }
 
 func (r *UserResolver) Monitors(ctx context.Context, args *ListMonitorsArgs) (MonitorConnectionResolver, error) {
-	if err := backend.CheckSiteAdminOrSameUser(ctx, r.user.ID); err != nil {
+	if err := backend.CheckSameUser(ctx, r.user.ID); err != nil {
 		return nil, err
 	}
 	return EnterpriseResolvers.codeMonitorsResolver.Monitors(ctx, r.user.ID, args)
 }
 
 func (r *UserResolver) PublicRepositories(ctx context.Context) ([]*RepositoryResolver, error) {
-	if err := backend.CheckSiteAdminOrSameUser(ctx, r.user.ID); err != nil {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, r.db, r.user.ID); err != nil {
 		return nil, err
 	}
 	repos, err := database.UserPublicRepos(r.db).ListByUser(ctx, r.user.ID)

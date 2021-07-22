@@ -2,21 +2,22 @@ package graphqlbackend
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/google/go-cmp/cmp"
-
 	"github.com/hashicorp/go-multierror"
+	"github.com/stretchr/testify/require"
 
-	searchrepos "github.com/sourcegraph/sourcegraph/cmd/frontend/internal/search/repos"
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/database/dbtesting"
 	"github.com/sourcegraph/sourcegraph/internal/search"
 	"github.com/sourcegraph/sourcegraph/internal/search/query"
+	searchrepos "github.com/sourcegraph/sourcegraph/internal/search/repos"
+	"github.com/sourcegraph/sourcegraph/internal/search/run"
 	"github.com/sourcegraph/sourcegraph/internal/types"
 	"github.com/sourcegraph/sourcegraph/schema"
 )
@@ -165,23 +166,23 @@ func TestAlertForDiffCommitSearchLimits(t *testing.T) {
 	}{
 		{
 			name:                 "diff_search_warns_on_repos_greater_than_search_limit",
-			multiErr:             multierror.Append(&multierror.Error{}, &RepoLimitError{ResultType: "diff", Max: 50}),
+			multiErr:             multierror.Append(&multierror.Error{}, &run.RepoLimitError{ResultType: "diff", Max: 50}),
 			wantAlertDescription: `Diff search can currently only handle searching across 50 repositories at a time. Try using the "repo:" filter to narrow down which repositories to search, or using 'after:"1 week ago"'.`,
 		},
 		{
 			name:                 "commit_search_warns_on_repos_greater_than_search_limit",
-			multiErr:             multierror.Append(&multierror.Error{}, &RepoLimitError{ResultType: "commit", Max: 50}),
+			multiErr:             multierror.Append(&multierror.Error{}, &run.RepoLimitError{ResultType: "commit", Max: 50}),
 			wantAlertDescription: `Commit search can currently only handle searching across 50 repositories at a time. Try using the "repo:" filter to narrow down which repositories to search, or using 'after:"1 week ago"'.`,
 		},
 		{
 			name:                 "commit_search_warns_on_repos_greater_than_search_limit_with_time_filter",
-			multiErr:             multierror.Append(&multierror.Error{}, &TimeLimitError{ResultType: "commit", Max: 10000}),
+			multiErr:             multierror.Append(&multierror.Error{}, &run.TimeLimitError{ResultType: "commit", Max: 10000}),
 			wantAlertDescription: `Commit search can currently only handle searching across 10000 repositories at a time. Try using the "repo:" filter to narrow down which repositories to search.`,
 		},
 	}
 
 	for _, test := range cases {
-		alert := alertForError(test.multiErr, &SearchInputs{})
+		alert := alertForError(test.multiErr)
 		haveAlertDescription := alert.description
 		if diff := cmp.Diff(test.wantAlertDescription, haveAlertDescription); diff != "" {
 			t.Fatalf("test %s, mismatched alert (-want, +got):\n%s", test.name, diff)
@@ -215,7 +216,7 @@ func TestErrorToAlertStructuralSearch(t *testing.T) {
 			Errors:      test.errors,
 			ErrorFormat: multierror.ListFormatFunc,
 		}
-		haveAlert := alertForError(multiErr, &SearchInputs{})
+		haveAlert := alertForError(multiErr)
 
 		if haveAlert != nil && haveAlert.title != test.wantAlertTitle {
 			t.Fatalf("test %s, have alert: %q, want: %q", test.name, haveAlert.title, test.wantAlertTitle)
@@ -248,7 +249,7 @@ func TestAlertForOverRepoLimit(t *testing.T) {
 	}
 
 	setMockResolveRepositories := func(numRepos int) {
-		mockResolveRepositories = func(effectiveRepoFieldValues []string) (resolved searchrepos.Resolved, err error) {
+		mockResolveRepositories = func() (resolved searchrepos.Resolved, err error) {
 			return searchrepos.Resolved{
 				RepoRevs:        generateRepoRevs(numRepos),
 				MissingRepoRevs: make([]*search.RepositoryRevisions, 0),
@@ -354,7 +355,7 @@ func TestAlertForOverRepoLimit(t *testing.T) {
 			}
 			sr := searchResolver{
 				db: db,
-				SearchInputs: &SearchInputs{
+				SearchInputs: &run.SearchInputs{
 					OriginalQuery: test.query,
 					Plan:          plan,
 					Query:         plan.ToParseTree(),
@@ -368,7 +369,10 @@ func TestAlertForOverRepoLimit(t *testing.T) {
 			if test.cancelContext {
 				cancel()
 			}
-			alert := sr.alertForOverRepoLimit(ctx)
+			alert, err := errorToAlert(sr.errorForOverRepoLimit(ctx))
+			if err != nil {
+				t.Fatalf("unexpected error: %s", err)
+			}
 
 			wantAlert := test.wantAlert
 			if !reflect.DeepEqual(alert, wantAlert) {
@@ -401,7 +405,7 @@ func TestCapFirst(t *testing.T) {
 func TestAlertForNoResolvedReposWithNonGlobalSearchContext(t *testing.T) {
 	db := new(dbtesting.MockDB)
 
-	mockResolveRepositories = func(effectiveRepoFieldValues []string) (resolved searchrepos.Resolved, err error) {
+	mockResolveRepositories = func() (resolved searchrepos.Resolved, err error) {
 		return searchrepos.Resolved{
 			RepoRevs:        []*search.RepositoryRevisions{},
 			MissingRepoRevs: make([]*search.RepositoryRevisions, 0),
@@ -429,15 +433,14 @@ func TestAlertForNoResolvedReposWithNonGlobalSearchContext(t *testing.T) {
 	}
 	sr := searchResolver{
 		db: db,
-		SearchInputs: &SearchInputs{
+		SearchInputs: &run.SearchInputs{
 			OriginalQuery: searchQuery,
 			Query:         q,
 			UserSettings:  &schema.Settings{},
 		},
 	}
 
-	alert := sr.alertForNoResolvedRepos(context.Background())
-	if !reflect.DeepEqual(alert, wantAlert) {
-		t.Fatalf("have alert %+v, want: %+v", alert, wantAlert)
-	}
+	alert := sr.alertForNoResolvedRepos(context.Background(), q)
+	require.NoError(t, err)
+	require.Equal(t, wantAlert, alert)
 }

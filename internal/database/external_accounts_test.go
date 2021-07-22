@@ -10,8 +10,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/sourcegraph/sourcegraph/internal/database/dbtesting"
+	"github.com/sourcegraph/sourcegraph/internal/database/dbtest"
 	"github.com/sourcegraph/sourcegraph/internal/encryption"
+	et "github.com/sourcegraph/sourcegraph/internal/encryption/testing"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc"
 )
 
@@ -19,7 +20,8 @@ func TestExternalAccounts_LookupUserAndSave(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	db := dbtesting.GetDB(t)
+	t.Parallel()
+	db := dbtest.NewDB(t, "")
 	ctx := context.Background()
 
 	spec := extsvc.AccountSpec{
@@ -46,7 +48,8 @@ func TestExternalAccounts_AssociateUserAndSave(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	db := dbtesting.GetDB(t)
+	t.Parallel()
+	db := dbtest.NewDB(t, "")
 	ctx := context.Background()
 
 	user, err := Users(db).Create(ctx, NewUser{Username: "u"})
@@ -96,7 +99,8 @@ func TestExternalAccounts_CreateUserAndSave(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	db := dbtesting.GetDB(t)
+	t.Parallel()
+	db := dbtest.NewDB(t, "")
 	ctx := context.Background()
 
 	spec := extsvc.AccountSpec{
@@ -150,7 +154,8 @@ func TestExternalAccounts_CreateUserAndSave_NilData(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	db := dbtesting.GetDB(t)
+	t.Parallel()
+	db := dbtest.NewDB(t, "")
 	ctx := context.Background()
 
 	spec := extsvc.AccountSpec{
@@ -197,7 +202,8 @@ func TestExternalAccounts_List(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	db := dbtesting.GetDB(t)
+	t.Parallel()
+	db := dbtest.NewDB(t, "")
 	ctx := context.Background()
 
 	specs := []extsvc.AccountSpec{
@@ -307,10 +313,11 @@ func TestExternalAccounts_Encryption(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	db := dbtesting.GetDB(t)
+	t.Parallel()
+	db := dbtest.NewDB(t, "")
 	ctx := context.Background()
 
-	store := ExternalAccounts(db).WithEncryptionKey(testKey{})
+	store := ExternalAccounts(db).WithEncryptionKey(et.TestKey{})
 
 	spec := extsvc.AccountSpec{
 		ServiceType: "xa",
@@ -399,7 +406,8 @@ func TestExternalAccounts_expiredAt(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	db := dbtesting.GetDB(t)
+	t.Parallel()
+	db := dbtest.NewDB(t, "")
 	ctx := context.Background()
 
 	spec := extsvc.AccountSpec{

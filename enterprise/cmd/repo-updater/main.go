@@ -17,7 +17,6 @@ import (
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/batches"
 	codemonitorsBackground "github.com/sourcegraph/sourcegraph/enterprise/internal/codemonitors/background"
 	edb "github.com/sourcegraph/sourcegraph/enterprise/internal/database"
-	insightsBackground "github.com/sourcegraph/sourcegraph/enterprise/internal/insights/background"
 	"github.com/sourcegraph/sourcegraph/internal/actor"
 	ossAuthz "github.com/sourcegraph/sourcegraph/internal/authz"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
@@ -25,6 +24,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/database/dbconn"
 	"github.com/sourcegraph/sourcegraph/internal/database/dbutil"
 	"github.com/sourcegraph/sourcegraph/internal/debugserver"
+	"github.com/sourcegraph/sourcegraph/internal/encryption/keyring"
 	"github.com/sourcegraph/sourcegraph/internal/httpcli"
 	"github.com/sourcegraph/sourcegraph/internal/ratelimit"
 	"github.com/sourcegraph/sourcegraph/internal/repos"
@@ -42,6 +42,7 @@ func main() {
 func enterpriseInit(
 	db *sql.DB,
 	repoStore *repos.Store,
+	keyring keyring.Ring,
 	cf *httpcli.Factory,
 	server *repoupdater.Server,
 ) (debugDumpers []debugserver.Dumper) {
@@ -50,12 +51,11 @@ func enterpriseInit(
 	ctx := actor.WithInternalActor(context.Background())
 
 	codemonitorsBackground.StartBackgroundJobs(ctx, db)
-	insightsBackground.StartBackgroundJobs(ctx, db)
 
 	// No Batch Changes on dotcom, so we don't need to spawn the
 	// background jobs for this feature.
 	if !envvar.SourcegraphDotComMode() {
-		syncRegistry := batches.InitBackgroundJobs(ctx, db, cf)
+		syncRegistry := batches.InitBackgroundJobs(ctx, db, keyring.BatchChangesCredentialKey, cf)
 		if server != nil {
 			server.ChangesetSyncRegistry = syncRegistry
 		}

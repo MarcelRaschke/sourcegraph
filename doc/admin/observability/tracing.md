@@ -10,8 +10,9 @@
   16686 to public Internet traffic from your IP, then navigate to `http://${NODE_IP}:16686` in your
   browser.
 * **Kubernetes:** Jaeger is already deployed, unless you explicitly removed it from the Sourcegraph
-  manifest. Access it by running `kubectl port-forward svc/jaeger-query 16686` and going to
-  `http://localhost:16686` in your browser.
+  manifest. Jaeger can be accessed from the admin UI under Maintenance/Tracing. Or by running `kubectl port-forward svc/jaeger-query 16686` and going to
+  `http://localhost:16686` in your browser. 
+  
 
 The Jaeger UI should look something like this:
 
@@ -29,7 +30,7 @@ The Jaeger UI should look something like this:
 1. Go to Sourcegraph in your browser and do a search.
 1. Open Chrome dev tools.
 1. Append `&trace=1` to the end of the URL and hit `Enter`.
-1. In the Chrome dev tools Network tab, find the `graphql?Search` request. Click it and click on the
+1. In the Chrome dev tools Network tab, find the `graphql?Search` or `stream?` request. Click it and click on the
    `Headers` tab. The value of the `x-trace` Response Header should be a trace ID, e.g.,
    `7edb43f744c42fbf`.
 

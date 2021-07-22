@@ -1,17 +1,15 @@
 import classNames from 'classnames'
-import PlusIcon from 'mdi-react/PlusIcon'
 import React, { useEffect, useCallback, useState, useMemo } from 'react'
 import { RouteComponentProps } from 'react-router'
 import { Observable, ReplaySubject } from 'rxjs'
 import { filter, map, tap, withLatestFrom } from 'rxjs/operators'
 
-import { Link } from '@sourcegraph/shared/src/components/Link'
 import { TelemetryProps } from '@sourcegraph/shared/src/telemetry/telemetryService'
 import { useObservable } from '@sourcegraph/shared/src/util/useObservable'
+import { Container, PageHeader } from '@sourcegraph/wildcard'
 
 import { BatchChangesIcon } from '../../../batches/icons'
 import { FilteredConnection, FilteredConnectionFilter } from '../../../components/FilteredConnection'
-import { PageHeader } from '../../../components/PageHeader'
 import {
     ListBatchChange,
     Scalars,
@@ -26,11 +24,14 @@ import {
     queryBatchChanges as _queryBatchChanges,
     queryBatchChangesByNamespace,
 } from './backend'
+import styles from './BatchChangeListPage.module.scss'
 import { BatchChangeNode, BatchChangeNodeProps } from './BatchChangeNode'
 import { BatchChangesListEmpty } from './BatchChangesListEmpty'
 import { BatchChangesListIntro } from './BatchChangesListIntro'
+import { NewBatchChangeButton } from './NewBatchChangeButton'
 
-export interface BatchChangeListPageProps extends TelemetryProps, Pick<RouteComponentProps, 'history' | 'location'> {
+export interface BatchChangeListPageProps extends TelemetryProps, Pick<RouteComponentProps, 'location'> {
+    headingElement: 'h1' | 'h2'
     displayNamespace?: boolean
     /** For testing only. */
     queryBatchChanges?: typeof _queryBatchChanges
@@ -77,6 +78,7 @@ export const BatchChangeListPage: React.FunctionComponent<BatchChangeListPagePro
     queryBatchChanges = _queryBatchChanges,
     areBatchChangesLicensed = _areBatchChangesLicensed,
     displayNamespace = true,
+    headingElement,
     location,
     openTab,
     ...props
@@ -124,32 +126,35 @@ export const BatchChangeListPage: React.FunctionComponent<BatchChangeListPagePro
             <PageHeader
                 path={[{ icon: BatchChangesIcon, text: 'Batch Changes' }]}
                 className="test-batches-list-page mb-3"
-                actions={<NewBatchChangeButton location={location} />}
-                byline="Run custom code over hundreds of repositories and manage the resulting changesets"
+                actions={<NewBatchChangeButton to={`${location.pathname}/create`} />}
+                headingElement={headingElement}
+                description="Run custom code over hundreds of repositories and manage the resulting changesets."
             />
             <BatchChangesListIntro licensed={licensed} />
             <BatchChangeListTabHeader selectedTab={selectedTab} setSelectedTab={setSelectedTab} />
-            {selectedTab === 'gettingStarted' && <BatchChangesListEmpty />}
-            {selectedTab === 'batchChanges' && (
-                <FilteredConnection<ListBatchChange, Omit<BatchChangeNodeProps, 'node'>>
-                    {...props}
-                    location={location}
-                    nodeComponent={BatchChangeNode}
-                    nodeComponentProps={{ history: props.history, displayNamespace }}
-                    queryConnection={query}
-                    hideSearch={true}
-                    defaultFirst={15}
-                    filters={FILTERS}
-                    noun="batch change"
-                    pluralNoun="batch changes"
-                    listComponent="div"
-                    listClassName="batch-change-list-page__grid mb-3"
-                    className="mb-3"
-                    cursorPaging={true}
-                    noSummaryIfAllNodesVisible={true}
-                    emptyElement={<BatchChangeListEmptyElement location={location} />}
-                />
-            )}
+            <Container className="mb-4">
+                {selectedTab === 'gettingStarted' && <BatchChangesListEmpty />}
+                {selectedTab === 'batchChanges' && (
+                    <FilteredConnection<ListBatchChange, Omit<BatchChangeNodeProps, 'node'>>
+                        {...props}
+                        location={location}
+                        nodeComponent={BatchChangeNode}
+                        nodeComponentProps={{ displayNamespace }}
+                        queryConnection={query}
+                        hideSearch={true}
+                        defaultFirst={15}
+                        filters={FILTERS}
+                        noun="batch change"
+                        pluralNoun="batch changes"
+                        listComponent="div"
+                        listClassName={styles.batchChangeListPageGrid}
+                        className="filtered-connection__centered-summary"
+                        cursorPaging={true}
+                        noSummaryIfAllNodesVisible={true}
+                        emptyElement={<BatchChangeListEmptyElement location={location} />}
+                    />
+                )}
+            </Container>
         </>
     )
 }
@@ -187,16 +192,8 @@ const BatchChangeListEmptyElement: React.FunctionComponent<BatchChangeListEmptyE
         <p>
             <strong>No batch changes have been created</strong>
         </p>
-        <NewBatchChangeButton location={location} />
+        <NewBatchChangeButton to={`${location.pathname}/create`} />
     </div>
-)
-
-interface NewBatchChangeButtonProps extends Pick<RouteComponentProps, 'location'> {}
-
-const NewBatchChangeButton: React.FunctionComponent<NewBatchChangeButtonProps> = ({ location }) => (
-    <Link to={`${location.pathname}/create`} className="btn btn-secondary">
-        <PlusIcon className="icon-inline" /> Create batch change
-    </Link>
 )
 
 const BatchChangeListTabHeader: React.FunctionComponent<{
@@ -218,7 +215,7 @@ const BatchChangeListTabHeader: React.FunctionComponent<{
         [setSelectedTab]
     )
     return (
-        <div className="overflow-auto mb-4">
+        <div className="overflow-auto mb-2">
             <ul className="nav nav-tabs d-inline-flex d-sm-flex flex-nowrap text-nowrap">
                 <li className="nav-item">
                     {/* eslint-disable-next-line jsx-a11y/anchor-is-valid */}
@@ -228,7 +225,9 @@ const BatchChangeListTabHeader: React.FunctionComponent<{
                         className={classNames('nav-link', selectedTab === 'batchChanges' && 'active')}
                         role="button"
                     >
-                        All batch changes
+                        <span className="text-content" data-tab-content="All batch changes">
+                            All batch changes
+                        </span>
                     </a>
                 </li>
                 <li className="nav-item">
@@ -239,7 +238,9 @@ const BatchChangeListTabHeader: React.FunctionComponent<{
                         className={classNames('nav-link', selectedTab === 'gettingStarted' && 'active')}
                         role="button"
                     >
-                        Getting started
+                        <span className="text-content" data-tab-content="Getting started">
+                            Getting started
+                        </span>
                     </a>
                 </li>
             </ul>

@@ -26,10 +26,6 @@ export const overviewGroup: SiteAdminSideBarGroup = {
             label: 'Feedback survey',
             to: '/site-admin/surveys',
         },
-        {
-            label: 'Migrations',
-            to: '/site-admin/migrations',
-        },
     ],
 }
 
@@ -107,9 +103,14 @@ export const maintenanceGroup: SiteAdminSideBarGroup = {
             to: '/site-admin/report-bug',
         },
         {
+            label: 'Migrations',
+            to: '/site-admin/migrations',
+        },
+        {
             label: 'Instrumentation',
             to: '/-/debug/',
             source: 'server',
+            condition: () => window.context.deployType === 'kubernetes',
         },
         {
             label: 'Monitoring',

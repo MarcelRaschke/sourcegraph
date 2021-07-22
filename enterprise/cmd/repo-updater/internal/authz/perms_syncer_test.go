@@ -3,21 +3,21 @@ package authz
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"net/http"
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/google/go-cmp/cmp"
-	"github.com/pkg/errors"
 
 	edb "github.com/sourcegraph/sourcegraph/enterprise/internal/database"
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/authz"
 	"github.com/sourcegraph/sourcegraph/internal/database"
-	"github.com/sourcegraph/sourcegraph/internal/database/dbconn"
+	"github.com/sourcegraph/sourcegraph/internal/database/dbtesting"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/github"
+	"github.com/sourcegraph/sourcegraph/internal/extsvc/gitlab"
 	"github.com/sourcegraph/sourcegraph/internal/ratelimit"
 	"github.com/sourcegraph/sourcegraph/internal/repos"
 	"github.com/sourcegraph/sourcegraph/internal/timeutil"
@@ -67,8 +67,9 @@ type mockProvider struct {
 	serviceType string
 	serviceID   string
 
-	fetchUserPerms func(context.Context, *extsvc.Account) (*authz.ExternalUserPermissions, error)
-	fetchRepoPerms func(ctx context.Context, repo *extsvc.Repository) ([]extsvc.AccountID, error)
+	fetchUserPerms        func(context.Context, *extsvc.Account) (*authz.ExternalUserPermissions, error)
+	fetchUserPermsByToken func(context.Context, string) (*authz.ExternalUserPermissions, error)
+	fetchRepoPerms        func(ctx context.Context, repo *extsvc.Repository) ([]extsvc.AccountID, error)
 }
 
 func (*mockProvider) FetchAccount(context.Context, *types.User, []*extsvc.Account, []string) (*extsvc.Account, error) {
@@ -84,12 +85,17 @@ func (p *mockProvider) FetchUserPerms(ctx context.Context, acct *extsvc.Account)
 	return p.fetchUserPerms(ctx, acct)
 }
 
+func (p *mockProvider) FetchUserPermsByToken(ctx context.Context, token string) (*authz.ExternalUserPermissions, error) {
+	return p.fetchUserPermsByToken(ctx, token)
+}
+
 func (p *mockProvider) FetchRepoPerms(ctx context.Context, repo *extsvc.Repository) ([]extsvc.AccountID, error) {
 	return p.fetchRepoPerms(ctx, repo)
 }
 
 func TestPermsSyncer_syncUserPerms(t *testing.T) {
 	p := &mockProvider{
+		id:          1,
 		serviceType: extsvc.TypeGitLab,
 		serviceID:   "https://gitlab.com/",
 	}
@@ -101,6 +107,13 @@ func TestPermsSyncer_syncUserPerms(t *testing.T) {
 			ServiceType: p.ServiceType(),
 			ServiceID:   p.ServiceID(),
 		},
+	}
+	extService := &types.ExternalService{
+		ID:              1,
+		Kind:            extsvc.KindGitLab,
+		DisplayName:     "GITHUB1",
+		Config:          `{"token": "deadbeef"}`,
+		NamespaceUserID: 1,
 	}
 
 	database.Mocks.Users.GetByID = func(ctx context.Context, id int32) (*types.User, error) {
@@ -114,12 +127,12 @@ func TestPermsSyncer_syncUserPerms(t *testing.T) {
 	}
 	edb.Mocks.Perms.SetUserPermissions = func(_ context.Context, p *authz.UserPermissions) error {
 		if p.UserID != 1 {
-			return fmt.Errorf("UserID: want 1 but got %d", p.UserID)
+			return errors.Errorf("UserID: want 1 but got %d", p.UserID)
 		}
 
 		wantIDs := []uint32{1}
 		if diff := cmp.Diff(wantIDs, p.IDs.ToArray()); diff != "" {
-			return fmt.Errorf("IDs mismatch (-want +got):\n%s", diff)
+			return errors.Errorf("IDs mismatch (-want +got):\n%s", diff)
 		}
 		return nil
 	}
@@ -132,13 +145,16 @@ func TestPermsSyncer_syncUserPerms(t *testing.T) {
 	database.Mocks.UserEmails.ListByUser = func(ctx context.Context, opt database.UserEmailsListOptions) ([]*database.UserEmail, error) {
 		return nil, nil
 	}
+	database.Mocks.ExternalServices.List = func(opt database.ExternalServicesListOptions) ([]*types.ExternalService, error) {
+		return []*types.ExternalService{extService}, nil
+	}
 	defer func() {
 		database.Mocks = database.MockStores{}
 		edb.Mocks.Perms = edb.MockPerms{}
 	}()
 
 	permsStore := edb.Perms(nil, timeutil.Now)
-	s := NewPermsSyncer(repos.NewStore(dbconn.Global, sql.TxOptions{}), permsStore, timeutil.Now, nil)
+	s := NewPermsSyncer(repos.NewStore(&dbtesting.MockDB{}, sql.TxOptions{}), permsStore, timeutil.Now, nil)
 
 	tests := []struct {
 		name     string
@@ -158,6 +174,11 @@ func TestPermsSyncer_syncUserPerms(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			p.fetchUserPerms = func(context.Context, *extsvc.Account) (*authz.ExternalUserPermissions, error) {
+				return &authz.ExternalUserPermissions{
+					Exacts: []extsvc.RepoID{"1"},
+				}, test.fetchErr
+			}
+			p.fetchUserPermsByToken = func(ctx context.Context, s string) (*authz.ExternalUserPermissions, error) {
 				return &authz.ExternalUserPermissions{
 					Exacts: []extsvc.RepoID{"1"},
 				}, test.fetchErr
@@ -204,13 +225,16 @@ func TestPermsSyncer_syncUserPerms_tokenExpire(t *testing.T) {
 	database.Mocks.UserEmails.ListByUser = func(ctx context.Context, opt database.UserEmailsListOptions) ([]*database.UserEmail, error) {
 		return nil, nil
 	}
+	database.Mocks.ExternalServices.List = func(opt database.ExternalServicesListOptions) ([]*types.ExternalService, error) {
+		return []*types.ExternalService{}, nil
+	}
 	defer func() {
 		database.Mocks = database.MockStores{}
 		edb.Mocks.Perms = edb.MockPerms{}
 	}()
 
 	permsStore := edb.Perms(nil, timeutil.Now)
-	s := NewPermsSyncer(repos.NewStore(dbconn.Global, sql.TxOptions{}), permsStore, timeutil.Now, nil)
+	s := NewPermsSyncer(repos.NewStore(&dbtesting.MockDB{}, sql.TxOptions{}), permsStore, timeutil.Now, nil)
 
 	t.Run("invalid token", func(t *testing.T) {
 		calledTouchExpired := false
@@ -221,6 +245,27 @@ func TestPermsSyncer_syncUserPerms_tokenExpire(t *testing.T) {
 
 		p.fetchUserPerms = func(ctx context.Context, account *extsvc.Account) (*authz.ExternalUserPermissions, error) {
 			return nil, &github.APIError{Code: http.StatusUnauthorized}
+		}
+
+		err := s.syncUserPerms(context.Background(), 1, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !calledTouchExpired {
+			t.Fatal("!calledTouchExpired")
+		}
+	})
+
+	t.Run("forbidden", func(t *testing.T) {
+		calledTouchExpired := false
+		database.Mocks.ExternalAccounts.TouchExpired = func(ctx context.Context, id int32) error {
+			calledTouchExpired = true
+			return nil
+		}
+
+		p.fetchUserPerms = func(ctx context.Context, account *extsvc.Account) (*authz.ExternalUserPermissions, error) {
+			return nil, gitlab.NewHTTPError(http.StatusForbidden, nil)
 		}
 
 		err := s.syncUserPerms(context.Background(), 1, false)
@@ -299,13 +344,16 @@ func TestPermsSyncer_syncUserPerms_prefixSpecs(t *testing.T) {
 	database.Mocks.UserEmails.ListByUser = func(ctx context.Context, opt database.UserEmailsListOptions) ([]*database.UserEmail, error) {
 		return nil, nil
 	}
+	database.Mocks.ExternalServices.List = func(opt database.ExternalServicesListOptions) ([]*types.ExternalService, error) {
+		return []*types.ExternalService{}, nil
+	}
 	defer func() {
 		database.Mocks = database.MockStores{}
 		edb.Mocks.Perms = edb.MockPerms{}
 	}()
 
 	permsStore := edb.Perms(nil, timeutil.Now)
-	s := NewPermsSyncer(repos.NewStore(dbconn.Global, sql.TxOptions{}), permsStore, timeutil.Now, nil)
+	s := NewPermsSyncer(repos.NewStore(&dbtesting.MockDB{}, sql.TxOptions{}), permsStore, timeutil.Now, nil)
 
 	p.fetchUserPerms = func(context.Context, *extsvc.Account) (*authz.ExternalUserPermissions, error) {
 		return &authz.ExternalUserPermissions{
@@ -350,7 +398,7 @@ func TestPermsSyncer_syncRepoPerms(t *testing.T) {
 			database.Mocks.Repos = database.MockRepos{}
 		}()
 
-		s := newPermsSyncer(repos.NewStore(dbconn.Global, sql.TxOptions{}))
+		s := newPermsSyncer(repos.NewStore(&dbtesting.MockDB{}, sql.TxOptions{}))
 
 		err := s.syncRepoPerms(context.Background(), 1, false)
 		if err != nil {
@@ -393,12 +441,12 @@ func TestPermsSyncer_syncRepoPerms(t *testing.T) {
 		}
 		edb.Mocks.Perms.SetRepoPermissions = func(_ context.Context, p *authz.RepoPermissions) error {
 			if p.RepoID != 1 {
-				return fmt.Errorf("RepoID: want 1 but got %d", p.RepoID)
+				return errors.Errorf("RepoID: want 1 but got %d", p.RepoID)
 			}
 
 			wantUserIDs := []uint32{1}
 			if diff := cmp.Diff(wantUserIDs, p.UserIDs.ToArray()); diff != "" {
-				return fmt.Errorf("UserIDs mismatch (-want +got):\n%s", diff)
+				return errors.Errorf("UserIDs mismatch (-want +got):\n%s", diff)
 			}
 			return nil
 		}
@@ -424,7 +472,7 @@ func TestPermsSyncer_syncRepoPerms(t *testing.T) {
 			database.Mocks.Repos = database.MockRepos{}
 		}()
 
-		s := newPermsSyncer(repos.NewStore(dbconn.Global, sql.TxOptions{}))
+		s := newPermsSyncer(repos.NewStore(&dbtesting.MockDB{}, sql.TxOptions{}))
 
 		err := s.syncRepoPerms(context.Background(), 1, false)
 		if err != nil {
@@ -447,12 +495,12 @@ func TestPermsSyncer_syncRepoPerms(t *testing.T) {
 	}
 	edb.Mocks.Perms.SetRepoPermissions = func(_ context.Context, p *authz.RepoPermissions) error {
 		if p.RepoID != 1 {
-			return fmt.Errorf("RepoID: want 1 but got %d", p.RepoID)
+			return errors.Errorf("RepoID: want 1 but got %d", p.RepoID)
 		}
 
 		wantUserIDs := []uint32{1}
 		if diff := cmp.Diff(wantUserIDs, p.UserIDs.ToArray()); diff != "" {
-			return fmt.Errorf("UserIDs mismatch (-want +got):\n%s", diff)
+			return errors.Errorf("UserIDs mismatch (-want +got):\n%s", diff)
 		}
 		return nil
 	}
@@ -463,7 +511,7 @@ func TestPermsSyncer_syncRepoPerms(t *testing.T) {
 			AccountIDs:  []string{"pending_user"},
 		}
 		if diff := cmp.Diff(wantAccounts, accounts); diff != "" {
-			return fmt.Errorf("accounts mismatch (-want +got):\n%s", diff)
+			return errors.Errorf("accounts mismatch (-want +got):\n%s", diff)
 		}
 		return nil
 	}
@@ -486,7 +534,7 @@ func TestPermsSyncer_syncRepoPerms(t *testing.T) {
 		database.Mocks.Repos = database.MockRepos{}
 	}()
 
-	s := newPermsSyncer(repos.NewStore(dbconn.Global, sql.TxOptions{}))
+	s := newPermsSyncer(repos.NewStore(&dbtesting.MockDB{}, sql.TxOptions{}))
 
 	tests := []struct {
 		name     string

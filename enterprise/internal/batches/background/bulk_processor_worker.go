@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"time"
 
+	"github.com/hashicorp/go-multierror"
 	"github.com/keegancsmith/sqlf"
 
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/batches/sources"
@@ -23,9 +24,9 @@ const bulkProcessorMaxNumRetries = 10
 // makes to process a changeset job when it stalls (process crashes, etc.).
 const bulkProcessorMaxNumResets = 60
 
-// newBulkJobWorker creates a dbworker.Worker that fetches enqueued changeset_jobs
+// newBulkOperationWorker creates a dbworker.Worker that fetches enqueued changeset_jobs
 // from the database and passes them to the bulk executor for processing.
-func newBulkJobWorker(
+func newBulkOperationWorker(
 	ctx context.Context,
 	s *store.Store,
 	sourcer sources.Sourcer,
@@ -34,22 +35,23 @@ func newBulkJobWorker(
 	r := &bulkProcessorWorker{sourcer: sourcer, store: s}
 
 	options := workerutil.WorkerOptions{
-		Name:        "batches_bulk_processor",
-		NumHandlers: 5,
-		Interval:    5 * time.Second,
-		Metrics:     metrics.bulkProcessorWorkerMetrics,
+		Name:              "batches_bulk_processor",
+		NumHandlers:       5,
+		HeartbeatInterval: 15 * time.Second,
+		Interval:          5 * time.Second,
+		Metrics:           metrics.bulkProcessorWorkerMetrics,
 	}
 
-	workerStore := createBulkJobDBWorkerStore(s)
+	workerStore := createBulkOperationDBWorkerStore(s)
 
 	worker := dbworker.NewWorker(ctx, workerStore, r.HandlerFunc(), options)
 	return worker
 }
 
-// newBulkJobWorkerResetter creates a dbworker.Resetter that reenqueues lost jobs
+// newBulkOperationWorkerResetter creates a dbworker.Resetter that reenqueues lost jobs
 // for processing.
-func newBulkJobWorkerResetter(s *store.Store, metrics batchChangesMetrics) *dbworker.Resetter {
-	workerStore := createBulkJobDBWorkerStore(s)
+func newBulkOperationWorkerResetter(s *store.Store, metrics batchChangesMetrics) *dbworker.Resetter {
+	workerStore := createBulkOperationDBWorkerStore(s)
 
 	options := dbworker.ResetterOptions{
 		Name:     "batches_bulk_worker_resetter",
@@ -61,11 +63,11 @@ func newBulkJobWorkerResetter(s *store.Store, metrics batchChangesMetrics) *dbwo
 	return resetter
 }
 
-func createBulkJobDBWorkerStore(s *store.Store) dbworkerstore.Store {
+func createBulkOperationDBWorkerStore(s *store.Store) dbworkerstore.Store {
 	return dbworkerstore.New(s.Handle(), dbworkerstore.Options{
 		Name:              "batches_bulk_worker_store",
 		TableName:         "changeset_jobs",
-		ColumnExpressions: store.ChangesetJobColumns,
+		ColumnExpressions: store.ChangesetJobColumns.ToSqlf(),
 		Scan:              scanFirstChangesetJobRecord,
 
 		OrderByExpression: sqlf.Sprintf("changeset_jobs.state = 'errored', changeset_jobs.updated_at DESC"),
@@ -91,11 +93,25 @@ type bulkProcessorWorker struct {
 	sourcer sources.Sourcer
 }
 
-func (b *bulkProcessorWorker) HandlerFunc() dbworker.HandlerFunc {
-	return func(ctx context.Context, tx dbworkerstore.Store, record workerutil.Record) error {
+func (b *bulkProcessorWorker) HandlerFunc() workerutil.HandlerFunc {
+	return func(ctx context.Context, record workerutil.Record) (err error) {
+		tx, err := b.store.Transact(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			doneErr := tx.Done(nil)
+			if err != nil && doneErr != nil {
+				err = multierror.Append(err, doneErr)
+			}
+			if doneErr != nil {
+				err = doneErr
+			}
+		}()
+
 		processor := &bulkProcessor{
+			tx:      tx,
 			sourcer: b.sourcer,
-			store:   b.store.With(tx),
 		}
 		return processor.process(ctx, record.(*btypes.ChangesetJob))
 	}

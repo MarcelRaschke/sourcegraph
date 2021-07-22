@@ -9,18 +9,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/inconshreveable/log15"
 	"github.com/neelance/parallel"
-	"github.com/pkg/errors"
 	"github.com/sourcegraph/go-lsp"
 
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/backend"
 	"github.com/sourcegraph/sourcegraph/internal/database"
 	"github.com/sourcegraph/sourcegraph/internal/errcode"
-	"github.com/sourcegraph/sourcegraph/internal/gituri"
 	"github.com/sourcegraph/sourcegraph/internal/search"
 	"github.com/sourcegraph/sourcegraph/internal/search/query"
 	"github.com/sourcegraph/sourcegraph/internal/search/result"
+	"github.com/sourcegraph/sourcegraph/internal/search/searchcontexts"
+	"github.com/sourcegraph/sourcegraph/internal/search/streaming"
+	"github.com/sourcegraph/sourcegraph/internal/search/symbol"
 )
 
 const maxSearchSuggestions = 100
@@ -45,6 +47,7 @@ type SearchSuggestionResolver interface {
 	ToGitTree() (*GitTreeEntryResolver, bool)
 	ToSymbol() (*symbolResolver, bool)
 	ToLanguage() (*languageResolver, bool)
+	ToSearchContext() (*searchContextResolver, bool)
 }
 
 // baseSuggestionResolver implements all the To* methods, returning false for all of them.
@@ -52,12 +55,13 @@ type SearchSuggestionResolver interface {
 // searchSuggestionResolver.
 type baseSuggestionResolver struct{}
 
-func (baseSuggestionResolver) ToRepository() (*RepositoryResolver, bool) { return nil, false }
-func (baseSuggestionResolver) ToFile() (*GitTreeEntryResolver, bool)     { return nil, false }
-func (baseSuggestionResolver) ToGitBlob() (*GitTreeEntryResolver, bool)  { return nil, false }
-func (baseSuggestionResolver) ToGitTree() (*GitTreeEntryResolver, bool)  { return nil, false }
-func (baseSuggestionResolver) ToSymbol() (*symbolResolver, bool)         { return &symbolResolver{}, false }
-func (baseSuggestionResolver) ToLanguage() (*languageResolver, bool)     { return nil, false }
+func (baseSuggestionResolver) ToRepository() (*RepositoryResolver, bool)       { return nil, false }
+func (baseSuggestionResolver) ToFile() (*GitTreeEntryResolver, bool)           { return nil, false }
+func (baseSuggestionResolver) ToGitBlob() (*GitTreeEntryResolver, bool)        { return nil, false }
+func (baseSuggestionResolver) ToGitTree() (*GitTreeEntryResolver, bool)        { return nil, false }
+func (baseSuggestionResolver) ToSymbol() (*symbolResolver, bool)               { return &symbolResolver{}, false }
+func (baseSuggestionResolver) ToLanguage() (*languageResolver, bool)           { return nil, false }
+func (baseSuggestionResolver) ToSearchContext() (*searchContextResolver, bool) { return nil, false }
 
 // repositorySuggestionResolver implements searchSuggestionResolver for RepositoryResolver
 type repositorySuggestionResolver struct {
@@ -118,8 +122,8 @@ func (s symbolSuggestionResolver) Label() string {
 func (s symbolSuggestionResolver) ToSymbol() (*symbolResolver, bool) { return &s.symbol, true }
 func (s symbolSuggestionResolver) Key() suggestionKey {
 	return suggestionKey{
-		uri:    s.symbol.URI(),
 		symbol: s.symbol.Symbol.Name + s.symbol.Symbol.Parent,
+		url:    s.symbol.CanonicalURL(),
 	}
 }
 
@@ -158,13 +162,32 @@ func sortSearchSuggestions(s []SearchSuggestionResolver) {
 	})
 }
 
+type searchContextSuggestionResolver struct {
+	baseSuggestionResolver
+	searchContext *searchContextResolver
+	score         int
+}
+
+func (s searchContextSuggestionResolver) Score() int    { return s.score }
+func (s searchContextSuggestionResolver) Length() int   { return len(s.searchContext.Spec()) }
+func (s searchContextSuggestionResolver) Label() string { return s.searchContext.Spec() }
+func (s searchContextSuggestionResolver) ToSearchContext() (*searchContextResolver, bool) {
+	return s.searchContext, true
+}
+func (s searchContextSuggestionResolver) Key() suggestionKey {
+	return suggestionKey{
+		searchContextSpec: s.searchContext.Spec(),
+	}
+}
+
 type suggestionKey struct {
-	repoName string
-	repoRev  string
-	file     string
-	symbol   string
-	lang     string
-	uri      *gituri.URI
+	repoName          string
+	repoRev           string
+	file              string
+	symbol            string
+	lang              string
+	url               string
+	searchContextSpec string
 }
 
 type searchSuggestionsArgs struct {
@@ -245,13 +268,19 @@ func (r *searchResolver) Suggestions(ctx context.Context, args *searchSuggestion
 		effectiveRepoFieldValues = effectiveRepoFieldValues[:i]
 
 		if len(effectiveRepoFieldValues) > 0 || hasSingleContextField {
-			resolved, err := r.resolveRepositories(ctx, effectiveRepoFieldValues)
+			repoOptions := r.toRepoOptions(r.Query,
+				resolveRepositoriesOpts{
+					effectiveRepoFieldValues: effectiveRepoFieldValues,
+					limit:                    maxSearchSuggestions,
+				})
 
+			resolved, err := r.resolveRepositories(ctx, repoOptions)
 			resolvers := make([]SearchSuggestionResolver, 0, len(resolved.RepoRevs))
-			for _, rev := range resolved.RepoRevs {
+			for i, rev := range resolved.RepoRevs {
 				resolvers = append(resolvers, repositorySuggestionResolver{
-					repo:  NewRepositoryResolver(r.db, rev.Repo.ToRepo()),
-					score: math.MaxInt32,
+					repo: NewRepositoryResolver(r.db, rev.Repo.ToRepo()),
+					// Encode the returned order in score.
+					score: math.MaxInt32 - i,
 				})
 			}
 
@@ -351,7 +380,8 @@ func (r *searchResolver) Suggestions(ctx context.Context, args *searchSuggestion
 			return mockShowSymbolMatches()
 		}
 
-		resolved, err := r.resolveRepositories(ctx, nil)
+		repoOptions := r.toRepoOptions(r.Query, resolveRepositoriesOpts{})
+		resolved, err := r.resolveRepositories(ctx, repoOptions)
 		if err != nil {
 			return nil, err
 		}
@@ -369,10 +399,10 @@ func (r *searchResolver) Suggestions(ctx context.Context, args *searchSuggestion
 		ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 		defer cancel()
 
-		fileMatches, _, err := collectStream(func(stream Sender) error {
-			return searchSymbols(ctx, r.db, &search.TextParameters{
+		fileMatches, _, err := streaming.CollectStream(func(stream streaming.Sender) error {
+			return symbol.Search(ctx, &search.TextParameters{
 				PatternInfo:  p,
-				RepoPromise:  (&search.Promise{}).Resolve(resolved.RepoRevs),
+				RepoPromise:  (&search.RepoPromise{}).Resolve(resolved.RepoRevs),
 				Query:        r.Query,
 				Zoekt:        r.zoekt,
 				SearcherURLs: r.searcherURLs,
@@ -384,30 +414,42 @@ func (r *searchResolver) Suggestions(ctx context.Context, args *searchSuggestion
 
 		results = make([]SearchSuggestionResolver, 0)
 		for _, match := range fileMatches {
-			fileMatch, ok := match.ToFileMatch()
+			fileMatch, ok := match.(*result.FileMatch)
 			if !ok {
 				continue
 			}
-			for _, sr := range fileMatch.Symbols() {
+			for _, sm := range fileMatch.Symbols {
 				score := 20
-				if sr.Symbol.Parent == "" {
+				if sm.Symbol.Parent == "" {
 					score++
 				}
-				if len(sr.Symbol.Name) < 12 {
+				if len(sm.Symbol.Name) < 12 {
 					score++
 				}
-				switch ctagsKindToLSPSymbolKind(sr.Symbol.Kind) {
+				switch sm.Symbol.LSPKind() {
 				case lsp.SKFunction, lsp.SKMethod:
 					score += 2
 				case lsp.SKClass:
 					score += 3
 				}
-				if len(sr.Symbol.Name) >= 4 && strings.Contains(strings.ToLower(sr.URI().String()), strings.ToLower(sr.Symbol.Name)) {
+				repoName := strings.ToLower(string(sm.File.Repo.Name))
+				fileName := strings.ToLower(sm.File.Path)
+				symbolName := strings.ToLower(sm.Symbol.Name)
+				if len(sm.Symbol.Name) >= 4 && strings.Contains(repoName+fileName, symbolName) {
 					score++
 				}
 				results = append(results, symbolSuggestionResolver{
-					symbol: sr,
-					score:  score,
+					symbol: symbolResolver{
+						db: r.db,
+						commit: toGitCommitResolver(
+							NewRepositoryResolver(r.db, fileMatch.Repo.ToRepo()),
+							r.db,
+							fileMatch.CommitID,
+							nil,
+						),
+						SymbolMatch: sm,
+					},
+					score: score,
 				})
 			}
 		}
@@ -437,22 +479,30 @@ func (r *searchResolver) Suggestions(ctx context.Context, args *searchSuggestion
 		ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 		defer cancel()
 		if len(r.Query.Values(query.FieldDefault)) > 0 {
-			results, err := r.doResults(ctx, result.TypeFile) // only "file" result type
+			searchArgs, err := r.toTextParameters(r.Query)
+			if err != nil {
+				return nil, err
+			}
+			searchArgs.ResultTypes = result.TypeFile // only "file" result type
+			results, err := r.doResults(ctx, searchArgs)
 			if err == context.DeadlineExceeded {
 				err = nil // don't log as error below
 			}
 			var suggestions []SearchSuggestionResolver
 			if results != nil {
-				if len(results.SearchResults) > int(*args.First) {
-					results.SearchResults = results.SearchResults[:*args.First]
+				if len(results.Matches) > int(*args.First) {
+					results.Matches = results.Matches[:*args.First]
 				}
-				suggestions = make([]SearchSuggestionResolver, 0, len(results.SearchResults))
-				for i, res := range results.SearchResults {
-					if fm, ok := res.ToFileMatch(); ok {
-						entryResolver := fm.File()
+				suggestions = make([]SearchSuggestionResolver, 0, len(results.Matches))
+				for i, res := range results.Matches {
+					if fm, ok := res.(*result.FileMatch); ok {
+						fmResolver := &FileMatchResolver{
+							FileMatch:    *fm,
+							RepoResolver: NewRepositoryResolver(r.db, fm.Repo.ToRepo()),
+						}
 						suggestions = append(suggestions, gitTreeSuggestionResolver{
-							gitTreeEntry: entryResolver,
-							score:        len(results.SearchResults) - i,
+							gitTreeEntry: fmResolver.File(),
+							score:        len(results.Matches) - i,
 						})
 					}
 				}
@@ -462,6 +512,37 @@ func (r *searchResolver) Suggestions(ctx context.Context, args *searchSuggestion
 		return nil, nil
 	}
 	suggesters = append(suggesters, showFilesWithTextMatches)
+
+	showSearchContextSuggestions := func(ctx context.Context) ([]SearchSuggestionResolver, error) {
+		hasSingleContextField := len(r.Query.Values(query.FieldContext)) == 1
+		if !hasSingleContextField {
+			return nil, nil
+		}
+		searchContextSpec, _ := r.Query.StringValue(query.FieldContext)
+		parsedSearchContextSpec := searchcontexts.ParseSearchContextSpec(searchContextSpec)
+		searchContexts, err := database.SearchContexts(r.db).ListSearchContexts(
+			ctx,
+			database.ListSearchContextsPageOptions{First: maxSearchSuggestions},
+			database.ListSearchContextsOptions{
+				Name:              parsedSearchContextSpec.SearchContextName,
+				NamespaceName:     parsedSearchContextSpec.NamespaceName,
+				OrderBy:           database.SearchContextsOrderBySpec,
+				OrderByDescending: true,
+			},
+		)
+		if err != nil {
+			return nil, err
+		}
+		suggestions := make([]SearchSuggestionResolver, 0, len(searchContexts))
+		for i, searchContext := range searchContexts {
+			suggestions = append(suggestions, &searchContextSuggestionResolver{
+				searchContext: &searchContextResolver{searchContext, r.db},
+				score:         len(searchContexts) - i,
+			})
+		}
+		return suggestions, nil
+	}
+	suggesters = append(suggesters, showSearchContextSuggestions)
 
 	// Run suggesters.
 	var (
@@ -481,7 +562,7 @@ func (r *searchResolver) Suggestions(ctx context.Context, args *searchSuggestion
 				allSuggestions = append(allSuggestions, suggestions...)
 				mu.Unlock()
 			} else {
-				if errors.Cause(err) == context.DeadlineExceeded || errors.Cause(err) == context.Canceled {
+				if errors.IsAny(err, context.DeadlineExceeded, context.Canceled) {
 					log15.Warn("search suggestions exceeded deadline (skipping)", "query", r.rawQuery())
 				} else if !errcode.IsBadRequest(err) {
 					// We exclude bad user input. Note that this means that we

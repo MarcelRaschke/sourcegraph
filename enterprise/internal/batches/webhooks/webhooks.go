@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"strconv"
 
+	"github.com/cockroachdb/errors"
 	"github.com/inconshreveable/log15"
-	"github.com/pkg/errors"
 
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/batches/state"
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/batches/store"
@@ -54,7 +54,7 @@ func (h Webhook) getRepoForPR(
 	}
 
 	if len(rs) != 1 {
-		return nil, fmt.Errorf("fetched repositories have wrong length: %d", len(rs))
+		return nil, errors.Errorf("fetched repositories have wrong length: %d", len(rs))
 	}
 
 	return rs[0], nil
@@ -109,6 +109,11 @@ func (h Webhook) upsertChangesetEvent(
 		return nil
 	}
 
+	var kind btypes.ChangesetEventKind
+	if kind, err = btypes.ChangesetEventKindFor(ev); err != nil {
+		return err
+	}
+
 	cs, err := tx.GetChangeset(ctx, store.GetChangesetOpts{
 		RepoID:              r.ID,
 		ExternalID:          strconv.FormatInt(pr.ID, 10),
@@ -124,7 +129,7 @@ func (h Webhook) upsertChangesetEvent(
 	now := h.Store.Clock()()
 	event := &btypes.ChangesetEvent{
 		ChangesetID: cs.ID,
-		Kind:        btypes.ChangesetEventKindFor(ev),
+		Kind:        kind,
 		Key:         ev.Key(),
 		CreatedAt:   now,
 		UpdatedAt:   now,
@@ -165,7 +170,7 @@ func (h Webhook) upsertChangesetEvent(
 		ChangesetIDs: []int64{cs.ID},
 	})
 	state.SetDerivedState(ctx, tx.Repos(), cs, events)
-	if err := tx.UpdateChangeset(ctx, cs); err != nil {
+	if err := tx.UpdateChangesetCodeHostState(ctx, cs); err != nil {
 		return err
 	}
 

@@ -6,7 +6,8 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
+
 	"github.com/sourcegraph/sourcegraph/internal/search/streaming/api"
 	streamhttp "github.com/sourcegraph/sourcegraph/internal/search/streaming/http"
 )
@@ -248,7 +249,7 @@ func (r *AnyResult) UnmarshalJSON(b []byte) error {
 		}
 		r.Inner = rr
 	default:
-		return fmt.Errorf("Unknown type %s", typeUnmarshaller.TypeName)
+		return errors.Errorf("Unknown type %s", typeUnmarshaller.TypeName)
 	}
 	return nil
 }
@@ -406,8 +407,15 @@ func (srr *SearchSuggestionsResult) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		srr.inner = v
+	case "SearchContext":
+		var v SearchContextSuggestionResult
+		err := json.Unmarshal(data, &v)
+		if err != nil {
+			return err
+		}
+		srr.inner = v
 	default:
-		return fmt.Errorf("unknown typename %s", typeDecoder.TypeName)
+		return errors.Errorf("unknown typename %s", typeDecoder.TypeName)
 	}
 
 	return nil
@@ -446,6 +454,11 @@ type LanguageSuggestionResult struct {
 	Name string
 }
 
+type SearchContextSuggestionResult struct {
+	Spec        string `json:"spec"`
+	Description string `json:"description"`
+}
+
 func (c *Client) SearchSuggestions(query string) ([]SearchSuggestionsResult, error) {
 	const gqlQuery = `
 query SearchSuggestions($query: String!) {
@@ -480,6 +493,10 @@ query SearchSuggestions($query: String!) {
 			}
 			... on Language {
 				name
+			}
+			... on SearchContext {
+				spec
+				description
 			}
 		}
 	}
@@ -538,7 +555,16 @@ func (s *SearchStreamClient) SearchFiles(query string) (*SearchFileResults, erro
 				case *streamhttp.EventRepoMatch:
 					results.Results = append(results.Results, &SearchFileResult{})
 
-				case *streamhttp.EventFileMatch:
+				case *streamhttp.EventContentMatch:
+					var r SearchFileResult
+					r.File.Name = v.Path
+					r.Repository.Name = v.Repository
+					if len(v.Branches) > 0 {
+						r.RevSpec.Expr = v.Branches[0]
+					}
+					results.Results = append(results.Results, &r)
+
+				case *streamhttp.EventPathMatch:
 					var r SearchFileResult
 					r.File.Name = v.Path
 					r.Repository.Name = v.Repository
@@ -590,7 +616,7 @@ func (s *SearchStreamClient) SearchAll(query string) ([]*AnyResult, error) {
 						Name: v.Repository,
 					})
 
-				case *streamhttp.EventFileMatch:
+				case *streamhttp.EventContentMatch:
 					lms := make([]struct {
 						OffsetAndLengths [][2]int32 `json:"offsetAndLengths"`
 					}, len(v.LineMatches))
@@ -601,6 +627,12 @@ func (s *SearchStreamClient) SearchAll(query string) ([]*AnyResult, error) {
 						File:        struct{ Path string }{Path: v.Path},
 						Repository:  RepositoryResult{Name: v.Repository},
 						LineMatches: lms,
+					})
+
+				case *streamhttp.EventPathMatch:
+					results = append(results, FileResult{
+						File:       struct{ Path string }{Path: v.Path},
+						Repository: RepositoryResult{Name: v.Repository},
 					})
 
 				case *streamhttp.EventSymbolMatch:

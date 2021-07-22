@@ -65,12 +65,50 @@ Triggers:
  id                    | bigint                   |           | not null | nextval('batch_changes_site_credentials_id_seq'::regclass)
  external_service_type | text                     |           | not null | 
  external_service_id   | text                     |           | not null | 
- credential            | text                     |           | not null | 
  created_at            | timestamp with time zone |           | not null | now()
  updated_at            | timestamp with time zone |           | not null | now()
+ credential            | bytea                    |           | not null | 
+ encryption_key_id     | text                     |           | not null | ''::text
 Indexes:
     "batch_changes_site_credentials_pkey" PRIMARY KEY, btree (id)
     "batch_changes_site_credentials_unique" UNIQUE, btree (external_service_type, external_service_id)
+    "batch_changes_site_credentials_credential_idx" btree ((encryption_key_id = ANY (ARRAY[''::text, 'previously-migrated'::text])))
+
+```
+
+# Table "public.batch_spec_executions"
+```
+      Column       |           Type           | Collation | Nullable |                      Default                      
+-------------------+--------------------------+-----------+----------+---------------------------------------------------
+ id                | bigint                   |           | not null | nextval('batch_spec_executions_id_seq'::regclass)
+ state             | text                     |           |          | 'queued'::text
+ failure_message   | text                     |           |          | 
+ started_at        | timestamp with time zone |           |          | 
+ finished_at       | timestamp with time zone |           |          | 
+ process_after     | timestamp with time zone |           |          | 
+ num_resets        | integer                  |           | not null | 0
+ num_failures      | integer                  |           | not null | 0
+ execution_logs    | json[]                   |           |          | 
+ worker_hostname   | text                     |           | not null | ''::text
+ created_at        | timestamp with time zone |           | not null | now()
+ updated_at        | timestamp with time zone |           | not null | now()
+ batch_spec        | text                     |           | not null | 
+ batch_spec_id     | integer                  |           |          | 
+ user_id           | integer                  |           |          | 
+ namespace_user_id | integer                  |           |          | 
+ namespace_org_id  | integer                  |           |          | 
+ rand_id           | text                     |           | not null | 
+ last_heartbeat_at | timestamp with time zone |           |          | 
+Indexes:
+    "batch_spec_executions_pkey" PRIMARY KEY, btree (id)
+    "batch_spec_executions_rand_id" btree (rand_id)
+Check constraints:
+    "batch_spec_executions_has_1_namespace" CHECK ((namespace_user_id IS NULL) <> (namespace_org_id IS NULL))
+Foreign-key constraints:
+    "batch_spec_executions_batch_spec_id_fkey" FOREIGN KEY (batch_spec_id) REFERENCES batch_specs(id)
+    "batch_spec_executions_namespace_org_id_fkey" FOREIGN KEY (namespace_org_id) REFERENCES orgs(id) DEFERRABLE
+    "batch_spec_executions_namespace_user_id_fkey" FOREIGN KEY (namespace_user_id) REFERENCES users(id) DEFERRABLE
+    "batch_spec_executions_user_id_fkey" FOREIGN KEY (user_id) REFERENCES users(id) DEFERRABLE
 
 ```
 
@@ -96,6 +134,7 @@ Foreign-key constraints:
     "batch_specs_user_id_fkey" FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL DEFERRABLE
 Referenced by:
     TABLE "batch_changes" CONSTRAINT "batch_changes_batch_spec_id_fkey" FOREIGN KEY (batch_spec_id) REFERENCES batch_specs(id) DEFERRABLE
+    TABLE "batch_spec_executions" CONSTRAINT "batch_spec_executions_batch_spec_id_fkey" FOREIGN KEY (batch_spec_id) REFERENCES batch_specs(id)
     TABLE "changeset_specs" CONSTRAINT "changeset_specs_batch_spec_id_fkey" FOREIGN KEY (batch_spec_id) REFERENCES batch_specs(id) DEFERRABLE
 
 ```
@@ -125,27 +164,31 @@ Foreign-key constraints:
 
 # Table "public.changeset_jobs"
 ```
-     Column      |           Type           | Collation | Nullable |                  Default                   
------------------+--------------------------+-----------+----------+--------------------------------------------
- id              | bigint                   |           | not null | nextval('changeset_jobs_id_seq'::regclass)
- bulk_group      | text                     |           | not null | 
- user_id         | integer                  |           | not null | 
- batch_change_id | integer                  |           | not null | 
- changeset_id    | integer                  |           | not null | 
- job_type        | text                     |           | not null | 
- payload         | jsonb                    |           |          | '{}'::jsonb
- state           | text                     |           |          | 'queued'::text
- failure_message | text                     |           |          | 
- started_at      | timestamp with time zone |           |          | 
- finished_at     | timestamp with time zone |           |          | 
- process_after   | timestamp with time zone |           |          | 
- num_resets      | integer                  |           | not null | 0
- num_failures    | integer                  |           | not null | 0
- execution_logs  | json[]                   |           |          | 
- created_at      | timestamp with time zone |           | not null | now()
- updated_at      | timestamp with time zone |           | not null | now()
+      Column       |           Type           | Collation | Nullable |                  Default                   
+-------------------+--------------------------+-----------+----------+--------------------------------------------
+ id                | bigint                   |           | not null | nextval('changeset_jobs_id_seq'::regclass)
+ bulk_group        | text                     |           | not null | 
+ user_id           | integer                  |           | not null | 
+ batch_change_id   | integer                  |           | not null | 
+ changeset_id      | integer                  |           | not null | 
+ job_type          | text                     |           | not null | 
+ payload           | jsonb                    |           |          | '{}'::jsonb
+ state             | text                     |           |          | 'queued'::text
+ failure_message   | text                     |           |          | 
+ started_at        | timestamp with time zone |           |          | 
+ finished_at       | timestamp with time zone |           |          | 
+ process_after     | timestamp with time zone |           |          | 
+ num_resets        | integer                  |           | not null | 0
+ num_failures      | integer                  |           | not null | 0
+ execution_logs    | json[]                   |           |          | 
+ created_at        | timestamp with time zone |           | not null | now()
+ updated_at        | timestamp with time zone |           | not null | now()
+ worker_hostname   | text                     |           | not null | ''::text
+ last_heartbeat_at | timestamp with time zone |           |          | 
 Indexes:
     "changeset_jobs_pkey" PRIMARY KEY, btree (id)
+    "changeset_jobs_bulk_group_idx" btree (bulk_group)
+    "changeset_jobs_state_idx" btree (state)
 Check constraints:
     "changeset_jobs_payload_check" CHECK (jsonb_typeof(payload) = 'object'::text)
 Foreign-key constraints:
@@ -192,42 +235,45 @@ Referenced by:
 
 # Table "public.changesets"
 ```
-          Column          |           Type           | Collation | Nullable |                Default                 
---------------------------+--------------------------+-----------+----------+----------------------------------------
- id                       | bigint                   |           | not null | nextval('changesets_id_seq'::regclass)
- batch_change_ids         | jsonb                    |           | not null | '{}'::jsonb
- repo_id                  | integer                  |           | not null | 
- created_at               | timestamp with time zone |           | not null | now()
- updated_at               | timestamp with time zone |           | not null | now()
- metadata                 | jsonb                    |           |          | '{}'::jsonb
- external_id              | text                     |           |          | 
- external_service_type    | text                     |           | not null | 
- external_deleted_at      | timestamp with time zone |           |          | 
- external_branch          | text                     |           |          | 
- external_updated_at      | timestamp with time zone |           |          | 
- external_state           | text                     |           |          | 
- external_review_state    | text                     |           |          | 
- external_check_state     | text                     |           |          | 
- diff_stat_added          | integer                  |           |          | 
- diff_stat_changed        | integer                  |           |          | 
- diff_stat_deleted        | integer                  |           |          | 
- sync_state               | jsonb                    |           | not null | '{}'::jsonb
- current_spec_id          | bigint                   |           |          | 
- previous_spec_id         | bigint                   |           |          | 
- publication_state        | text                     |           |          | 'UNPUBLISHED'::text
- owned_by_batch_change_id | bigint                   |           |          | 
- reconciler_state         | text                     |           |          | 'queued'::text
- failure_message          | text                     |           |          | 
- started_at               | timestamp with time zone |           |          | 
- finished_at              | timestamp with time zone |           |          | 
- process_after            | timestamp with time zone |           |          | 
- num_resets               | integer                  |           | not null | 0
- closing                  | boolean                  |           | not null | false
- num_failures             | integer                  |           | not null | 0
- log_contents             | text                     |           |          | 
- execution_logs           | json[]                   |           |          | 
- syncer_error             | text                     |           |          | 
- external_title           | text                     |           |          | 
+          Column          |                     Type                     | Collation | Nullable |                Default                 
+--------------------------+----------------------------------------------+-----------+----------+----------------------------------------
+ id                       | bigint                                       |           | not null | nextval('changesets_id_seq'::regclass)
+ batch_change_ids         | jsonb                                        |           | not null | '{}'::jsonb
+ repo_id                  | integer                                      |           | not null | 
+ created_at               | timestamp with time zone                     |           | not null | now()
+ updated_at               | timestamp with time zone                     |           | not null | now()
+ metadata                 | jsonb                                        |           |          | '{}'::jsonb
+ external_id              | text                                         |           |          | 
+ external_service_type    | text                                         |           | not null | 
+ external_deleted_at      | timestamp with time zone                     |           |          | 
+ external_branch          | text                                         |           |          | 
+ external_updated_at      | timestamp with time zone                     |           |          | 
+ external_state           | text                                         |           |          | 
+ external_review_state    | text                                         |           |          | 
+ external_check_state     | text                                         |           |          | 
+ diff_stat_added          | integer                                      |           |          | 
+ diff_stat_changed        | integer                                      |           |          | 
+ diff_stat_deleted        | integer                                      |           |          | 
+ sync_state               | jsonb                                        |           | not null | '{}'::jsonb
+ current_spec_id          | bigint                                       |           |          | 
+ previous_spec_id         | bigint                                       |           |          | 
+ publication_state        | text                                         |           |          | 'UNPUBLISHED'::text
+ owned_by_batch_change_id | bigint                                       |           |          | 
+ reconciler_state         | text                                         |           |          | 'queued'::text
+ failure_message          | text                                         |           |          | 
+ started_at               | timestamp with time zone                     |           |          | 
+ finished_at              | timestamp with time zone                     |           |          | 
+ process_after            | timestamp with time zone                     |           |          | 
+ num_resets               | integer                                      |           | not null | 0
+ closing                  | boolean                                      |           | not null | false
+ num_failures             | integer                                      |           | not null | 0
+ log_contents             | text                                         |           |          | 
+ execution_logs           | json[]                                       |           |          | 
+ syncer_error             | text                                         |           |          | 
+ external_title           | text                                         |           |          | 
+ worker_hostname          | text                                         |           | not null | ''::text
+ ui_publication_state     | batch_changes_changeset_ui_publication_state |           |          | 
+ last_heartbeat_at        | timestamp with time zone                     |           |          | 
 Indexes:
     "changesets_pkey" PRIMARY KEY, btree (id)
     "changesets_repo_external_id_unique" UNIQUE CONSTRAINT, btree (repo_id, external_id)
@@ -257,19 +303,21 @@ Referenced by:
 
 # Table "public.cm_action_jobs"
 ```
-     Column      |           Type           | Collation | Nullable |                  Default                   
------------------+--------------------------+-----------+----------+--------------------------------------------
- id              | integer                  |           | not null | nextval('cm_action_jobs_id_seq'::regclass)
- email           | bigint                   |           | not null | 
- state           | text                     |           |          | 'queued'::text
- failure_message | text                     |           |          | 
- started_at      | timestamp with time zone |           |          | 
- finished_at     | timestamp with time zone |           |          | 
- process_after   | timestamp with time zone |           |          | 
- num_resets      | integer                  |           | not null | 0
- num_failures    | integer                  |           | not null | 0
- log_contents    | text                     |           |          | 
- trigger_event   | integer                  |           |          | 
+      Column       |           Type           | Collation | Nullable |                  Default                   
+-------------------+--------------------------+-----------+----------+--------------------------------------------
+ id                | integer                  |           | not null | nextval('cm_action_jobs_id_seq'::regclass)
+ email             | bigint                   |           | not null | 
+ state             | text                     |           |          | 'queued'::text
+ failure_message   | text                     |           |          | 
+ started_at        | timestamp with time zone |           |          | 
+ finished_at       | timestamp with time zone |           |          | 
+ process_after     | timestamp with time zone |           |          | 
+ num_resets        | integer                  |           | not null | 0
+ num_failures      | integer                  |           | not null | 0
+ log_contents      | text                     |           |          | 
+ trigger_event     | integer                  |           |          | 
+ worker_hostname   | text                     |           | not null | ''::text
+ last_heartbeat_at | timestamp with time zone |           |          | 
 Indexes:
     "cm_action_jobs_pkey" PRIMARY KEY, btree (id)
 Foreign-key constraints:
@@ -372,21 +420,23 @@ Foreign-key constraints:
 
 # Table "public.cm_trigger_jobs"
 ```
-     Column      |           Type           | Collation | Nullable |                   Default                   
------------------+--------------------------+-----------+----------+---------------------------------------------
- id              | integer                  |           | not null | nextval('cm_trigger_jobs_id_seq'::regclass)
- query           | bigint                   |           | not null | 
- state           | text                     |           |          | 'queued'::text
- failure_message | text                     |           |          | 
- started_at      | timestamp with time zone |           |          | 
- finished_at     | timestamp with time zone |           |          | 
- process_after   | timestamp with time zone |           |          | 
- num_resets      | integer                  |           | not null | 0
- num_failures    | integer                  |           | not null | 0
- log_contents    | text                     |           |          | 
- query_string    | text                     |           |          | 
- results         | boolean                  |           |          | 
- num_results     | integer                  |           |          | 
+      Column       |           Type           | Collation | Nullable |                   Default                   
+-------------------+--------------------------+-----------+----------+---------------------------------------------
+ id                | integer                  |           | not null | nextval('cm_trigger_jobs_id_seq'::regclass)
+ query             | bigint                   |           | not null | 
+ state             | text                     |           |          | 'queued'::text
+ failure_message   | text                     |           |          | 
+ started_at        | timestamp with time zone |           |          | 
+ finished_at       | timestamp with time zone |           |          | 
+ process_after     | timestamp with time zone |           |          | 
+ num_resets        | integer                  |           | not null | 0
+ num_failures      | integer                  |           | not null | 0
+ log_contents      | text                     |           |          | 
+ query_string      | text                     |           |          | 
+ results           | boolean                  |           |          | 
+ num_results       | integer                  |           |          | 
+ worker_hostname   | text                     |           | not null | ''::text
+ last_heartbeat_at | timestamp with time zone |           |          | 
 Indexes:
     "cm_trigger_jobs_pkey" PRIMARY KEY, btree (id)
 Foreign-key constraints:
@@ -408,18 +458,6 @@ Referenced by:
 Indexes:
     "critical_and_site_config_pkey" PRIMARY KEY, btree (id)
     "critical_and_site_config_unique" UNIQUE, btree (id, type)
-
-```
-
-# Table "public.default_repos"
-```
- Column  |  Type   | Collation | Nullable | Default 
----------+---------+-----------+----------+---------
- repo_id | integer |           | not null | 
-Indexes:
-    "default_repos_pkey" PRIMARY KEY, btree (repo_id)
-Foreign-key constraints:
-    "default_repos_repo_id_fkey" FOREIGN KEY (repo_id) REFERENCES repo(id) ON DELETE CASCADE
 
 ```
 
@@ -529,6 +567,8 @@ Referenced by:
  argument          | jsonb                    |           | not null | 
  version           | text                     |           | not null | 
  timestamp         | timestamp with time zone |           | not null | 
+ feature_flags     | jsonb                    |           |          | 
+ cohort_id         | date                     |           |          | 
 Indexes:
     "event_logs_pkey" PRIMARY KEY, btree (id)
     "event_logs_anonymous_user_id" btree (anonymous_user_id)
@@ -555,7 +595,6 @@ Check constraints:
  user_id             | integer |           |          | 
 Indexes:
     "external_service_repos_repo_id_external_service_id_unique" UNIQUE CONSTRAINT, btree (repo_id, external_service_id)
-    "external_service_repos_external_service_id" btree (external_service_id)
     "external_service_repos_idx" btree (external_service_id, repo_id)
     "external_service_user_repos_idx" btree (user_id, repo_id) WHERE user_id IS NOT NULL
 Foreign-key constraints:
@@ -580,6 +619,8 @@ Foreign-key constraints:
  num_failures        | integer                  |           | not null | 0
  log_contents        | text                     |           |          | 
  execution_logs      | json[]                   |           |          | 
+ worker_hostname     | text                     |           | not null | ''::text
+ last_heartbeat_at   | timestamp with time zone |           |          | 
 Indexes:
     "external_service_sync_jobs_state_idx" btree (state)
 Foreign-key constraints:
@@ -618,6 +659,67 @@ Referenced by:
 
 ```
 
+# Table "public.feature_flag_overrides"
+```
+      Column       |           Type           | Collation | Nullable | Default 
+-------------------+--------------------------+-----------+----------+---------
+ namespace_org_id  | integer                  |           |          | 
+ namespace_user_id | integer                  |           |          | 
+ flag_name         | text                     |           | not null | 
+ flag_value        | boolean                  |           | not null | 
+ created_at        | timestamp with time zone |           | not null | now()
+ updated_at        | timestamp with time zone |           | not null | now()
+ deleted_at        | timestamp with time zone |           |          | 
+Indexes:
+    "feature_flag_overrides_unique_org_flag" UNIQUE CONSTRAINT, btree (namespace_org_id, flag_name)
+    "feature_flag_overrides_unique_user_flag" UNIQUE CONSTRAINT, btree (namespace_user_id, flag_name)
+    "feature_flag_overrides_org_id" btree (namespace_org_id) WHERE namespace_org_id IS NOT NULL
+    "feature_flag_overrides_user_id" btree (namespace_user_id) WHERE namespace_user_id IS NOT NULL
+Check constraints:
+    "feature_flag_overrides_has_org_or_user_id" CHECK (namespace_org_id IS NOT NULL OR namespace_user_id IS NOT NULL)
+Foreign-key constraints:
+    "feature_flag_overrides_flag_name_fkey" FOREIGN KEY (flag_name) REFERENCES feature_flags(flag_name) ON DELETE CASCADE
+    "feature_flag_overrides_namespace_org_id_fkey" FOREIGN KEY (namespace_org_id) REFERENCES orgs(id) ON DELETE CASCADE
+    "feature_flag_overrides_namespace_user_id_fkey" FOREIGN KEY (namespace_user_id) REFERENCES users(id) ON DELETE CASCADE
+
+```
+
+# Table "public.feature_flags"
+```
+   Column   |           Type           | Collation | Nullable | Default 
+------------+--------------------------+-----------+----------+---------
+ flag_name  | text                     |           | not null | 
+ flag_type  | feature_flag_type        |           | not null | 
+ bool_value | boolean                  |           |          | 
+ rollout    | integer                  |           |          | 
+ created_at | timestamp with time zone |           | not null | now()
+ updated_at | timestamp with time zone |           | not null | now()
+ deleted_at | timestamp with time zone |           |          | 
+Indexes:
+    "feature_flags_pkey" PRIMARY KEY, btree (flag_name)
+Check constraints:
+    "feature_flags_rollout_check" CHECK (rollout >= 0 AND rollout <= 10000)
+    "required_bool_fields" CHECK (1 =
+CASE
+    WHEN flag_type = 'bool'::feature_flag_type AND bool_value IS NULL THEN 0
+    WHEN flag_type <> 'bool'::feature_flag_type AND bool_value IS NOT NULL THEN 0
+    ELSE 1
+END)
+    "required_rollout_fields" CHECK (1 =
+CASE
+    WHEN flag_type = 'rollout'::feature_flag_type AND rollout IS NULL THEN 0
+    WHEN flag_type <> 'rollout'::feature_flag_type AND rollout IS NOT NULL THEN 0
+    ELSE 1
+END)
+Referenced by:
+    TABLE "feature_flag_overrides" CONSTRAINT "feature_flag_overrides_flag_name_fkey" FOREIGN KEY (flag_name) REFERENCES feature_flags(flag_name) ON DELETE CASCADE
+
+```
+
+**bool_value**: Bool value only defined when flag_type is bool
+
+**rollout**: Rollout only defined when flag_type is rollout. Increments of 0.01%
+
 # Table "public.gitserver_repos"
 ```
         Column         |           Type           | Collation | Nullable |      Default       
@@ -652,20 +754,22 @@ Indexes:
 
 # Table "public.insights_query_runner_jobs"
 ```
-     Column      |           Type           | Collation | Nullable |                        Default                         
------------------+--------------------------+-----------+----------+--------------------------------------------------------
- id              | integer                  |           | not null | nextval('insights_query_runner_jobs_id_seq'::regclass)
- series_id       | text                     |           | not null | 
- search_query    | text                     |           | not null | 
- state           | text                     |           |          | 'queued'::text
- failure_message | text                     |           |          | 
- started_at      | timestamp with time zone |           |          | 
- finished_at     | timestamp with time zone |           |          | 
- process_after   | timestamp with time zone |           |          | 
- num_resets      | integer                  |           | not null | 0
- num_failures    | integer                  |           | not null | 0
- execution_logs  | json[]                   |           |          | 
- record_time     | timestamp with time zone |           |          | 
+      Column       |           Type           | Collation | Nullable |                        Default                         
+-------------------+--------------------------+-----------+----------+--------------------------------------------------------
+ id                | integer                  |           | not null | nextval('insights_query_runner_jobs_id_seq'::regclass)
+ series_id         | text                     |           | not null | 
+ search_query      | text                     |           | not null | 
+ state             | text                     |           |          | 'queued'::text
+ failure_message   | text                     |           |          | 
+ started_at        | timestamp with time zone |           |          | 
+ finished_at       | timestamp with time zone |           |          | 
+ process_after     | timestamp with time zone |           |          | 
+ num_resets        | integer                  |           | not null | 0
+ num_failures      | integer                  |           | not null | 0
+ execution_logs    | json[]                   |           |          | 
+ record_time       | timestamp with time zone |           |          | 
+ worker_hostname   | text                     |           | not null | ''::text
+ last_heartbeat_at | timestamp with time zone |           |          | 
 Indexes:
     "insights_query_runner_jobs_pkey" PRIMARY KEY, btree (id)
     "insights_query_runner_jobs_state_btree" btree (state)
@@ -673,6 +777,34 @@ Indexes:
 ```
 
 See [enterprise/internal/insights/background/queryrunner/worker.go:Job](https://sourcegraph.com/search?q=repo:%5Egithub%5C.com/sourcegraph/sourcegraph%24+file:enterprise/internal/insights/background/queryrunner/worker.go+type+Job&patternType=literal)
+
+# Table "public.lsif_dependency_indexing_jobs"
+```
+      Column       |           Type           | Collation | Nullable |                          Default                          
+-------------------+--------------------------+-----------+----------+-----------------------------------------------------------
+ id                | integer                  |           | not null | nextval('lsif_dependency_indexing_jobs_id_seq'::regclass)
+ state             | text                     |           | not null | 'queued'::text
+ failure_message   | text                     |           |          | 
+ queued_at         | timestamp with time zone |           | not null | now()
+ started_at        | timestamp with time zone |           |          | 
+ finished_at       | timestamp with time zone |           |          | 
+ process_after     | timestamp with time zone |           |          | 
+ num_resets        | integer                  |           | not null | 0
+ num_failures      | integer                  |           | not null | 0
+ execution_logs    | json[]                   |           |          | 
+ upload_id         | integer                  |           |          | 
+ worker_hostname   | text                     |           | not null | ''::text
+ last_heartbeat_at | timestamp with time zone |           |          | 
+Indexes:
+    "lsif_dependency_indexing_jobs_pkey" PRIMARY KEY, btree (id)
+Foreign-key constraints:
+    "lsif_dependency_indexing_jobs_upload_id_fkey" FOREIGN KEY (upload_id) REFERENCES lsif_uploads(id) ON DELETE CASCADE
+
+```
+
+Tracks jobs that scan imports of indexes to schedule auto-index jobs.
+
+**upload_id**: The identifier of the triggering upload record.
 
 # Table "public.lsif_dirty_repositories"
 ```
@@ -697,11 +829,12 @@ Stores whether or not the nearest upload data for a repository is out of date (w
 
 # Table "public.lsif_index_configuration"
 ```
-    Column     |  Type   | Collation | Nullable |                       Default                        
----------------+---------+-----------+----------+------------------------------------------------------
- id            | bigint  |           | not null | nextval('lsif_index_configuration_id_seq'::regclass)
- repository_id | integer |           | not null | 
- data          | bytea   |           | not null | 
+      Column       |  Type   | Collation | Nullable |                       Default                        
+-------------------+---------+-----------+----------+------------------------------------------------------
+ id                | bigint  |           | not null | nextval('lsif_index_configuration_id_seq'::regclass)
+ repository_id     | integer |           | not null | 
+ data              | bytea   |           | not null | 
+ autoindex_enabled | boolean |           | not null | true
 Indexes:
     "lsif_index_configuration_pkey" PRIMARY KEY, btree (id)
     "lsif_index_configuration_repository_id_key" UNIQUE CONSTRAINT, btree (repository_id)
@@ -711,6 +844,8 @@ Foreign-key constraints:
 ```
 
 Stores the configuration used for code intel index jobs for a repository.
+
+**autoindex_enabled**: Whether or not auto-indexing should be attempted on this repo. Index jobs may be inferred from the repository contents if data is empty.
 
 **data**: The raw user-supplied [configuration](https://sourcegraph.com/github.com/sourcegraph/sourcegraph@3.23/-/blob/enterprise/internal/codeintel/autoindex/config/types.go#L3:6) (encoded in JSONC).
 
@@ -745,29 +880,33 @@ Stores the number of code intel events for repositories. Used for auto-index sch
 
 # Table "public.lsif_indexes"
 ```
-     Column      |           Type           | Collation | Nullable |                 Default                  
------------------+--------------------------+-----------+----------+------------------------------------------
- id              | bigint                   |           | not null | nextval('lsif_indexes_id_seq'::regclass)
- commit          | text                     |           | not null | 
- queued_at       | timestamp with time zone |           | not null | now()
- state           | text                     |           | not null | 'queued'::text
- failure_message | text                     |           |          | 
- started_at      | timestamp with time zone |           |          | 
- finished_at     | timestamp with time zone |           |          | 
- repository_id   | integer                  |           | not null | 
- process_after   | timestamp with time zone |           |          | 
- num_resets      | integer                  |           | not null | 0
- num_failures    | integer                  |           | not null | 0
- docker_steps    | jsonb[]                  |           | not null | 
- root            | text                     |           | not null | 
- indexer         | text                     |           | not null | 
- indexer_args    | text[]                   |           | not null | 
- outfile         | text                     |           | not null | 
- log_contents    | text                     |           |          | 
- execution_logs  | json[]                   |           |          | 
- local_steps     | text[]                   |           | not null | 
+         Column         |           Type           | Collation | Nullable |                 Default                  
+------------------------+--------------------------+-----------+----------+------------------------------------------
+ id                     | bigint                   |           | not null | nextval('lsif_indexes_id_seq'::regclass)
+ commit                 | text                     |           | not null | 
+ queued_at              | timestamp with time zone |           | not null | now()
+ state                  | text                     |           | not null | 'queued'::text
+ failure_message        | text                     |           |          | 
+ started_at             | timestamp with time zone |           |          | 
+ finished_at            | timestamp with time zone |           |          | 
+ repository_id          | integer                  |           | not null | 
+ process_after          | timestamp with time zone |           |          | 
+ num_resets             | integer                  |           | not null | 0
+ num_failures           | integer                  |           | not null | 0
+ docker_steps           | jsonb[]                  |           | not null | 
+ root                   | text                     |           | not null | 
+ indexer                | text                     |           | not null | 
+ indexer_args           | text[]                   |           | not null | 
+ outfile                | text                     |           | not null | 
+ log_contents           | text                     |           |          | 
+ execution_logs         | json[]                   |           |          | 
+ local_steps            | text[]                   |           | not null | 
+ commit_last_checked_at | timestamp with time zone |           |          | 
+ worker_hostname        | text                     |           | not null | ''::text
+ last_heartbeat_at      | timestamp with time zone |           |          | 
 Indexes:
     "lsif_indexes_pkey" PRIMARY KEY, btree (id)
+    "lsif_indexes_commit_last_checked_at" btree (commit_last_checked_at) WHERE state <> 'deleted'::text
 Check constraints:
     "lsif_uploads_commit_valid_chars" CHECK (commit ~ '^[a-z0-9]{40}$'::text)
 
@@ -843,7 +982,7 @@ Associates commits with the closest ancestor commit with usable upload data. Tog
  dump_id | integer |           | not null | 
 Indexes:
     "lsif_packages_pkey" PRIMARY KEY, btree (id)
-    "lsif_packages_scheme_name_version" btree (scheme, name, version)
+    "lsif_packages_scheme_name_version_dump_id" btree (scheme, name, version, dump_id)
 Foreign-key constraints:
     "lsif_packages_dump_id_fkey" FOREIGN KEY (dump_id) REFERENCES lsif_uploads(id) ON DELETE CASCADE
 
@@ -871,7 +1010,7 @@ Associates an upload with the set of packages they provide within a given packag
  dump_id | integer |           | not null | 
 Indexes:
     "lsif_references_pkey" PRIMARY KEY, btree (id)
-    "lsif_references_package" btree (scheme, name, version)
+    "lsif_references_scheme_name_version_dump_id" btree (scheme, name, version, dump_id)
 Foreign-key constraints:
     "lsif_references_dump_id_fkey" FOREIGN KEY (dump_id) REFERENCES lsif_uploads(id) ON DELETE CASCADE
 
@@ -889,37 +1028,65 @@ Associates an upload with the set of packages they require within a given packag
 
 **version**: The package version.
 
+# Table "public.lsif_retention_configuration"
+```
+                 Column                 |  Type   | Collation | Nullable |                         Default                          
+----------------------------------------+---------+-----------+----------+----------------------------------------------------------
+ id                                     | integer |           | not null | nextval('lsif_retention_configuration_id_seq'::regclass)
+ repository_id                          | integer |           | not null | 
+ max_age_for_non_stale_branches_seconds | integer |           | not null | 
+ max_age_for_non_stale_tags_seconds     | integer |           | not null | 
+Indexes:
+    "lsif_retention_configuration_pkey" PRIMARY KEY, btree (id)
+    "lsif_retention_configuration_repository_id_key" UNIQUE CONSTRAINT, btree (repository_id)
+Foreign-key constraints:
+    "lsif_retention_configuration_repository_id_fkey" FOREIGN KEY (repository_id) REFERENCES repo(id) ON DELETE CASCADE
+
+```
+
+Stores the retention policy of code intellience data for a repository.
+
+**max_age_for_non_stale_branches_seconds**: The number of seconds since the last modification of a branch until it is considered stale.
+
+**max_age_for_non_stale_tags_seconds**: The nujmber of seconds since the commit date of a tagged commit until it is considered stale.
+
 # Table "public.lsif_uploads"
 ```
-       Column        |           Type           | Collation | Nullable |                Default                 
----------------------+--------------------------+-----------+----------+----------------------------------------
- id                  | integer                  |           | not null | nextval('lsif_dumps_id_seq'::regclass)
- commit              | text                     |           | not null | 
- root                | text                     |           | not null | ''::text
- uploaded_at         | timestamp with time zone |           | not null | now()
- state               | text                     |           | not null | 'queued'::text
- failure_message     | text                     |           |          | 
- started_at          | timestamp with time zone |           |          | 
- finished_at         | timestamp with time zone |           |          | 
- repository_id       | integer                  |           | not null | 
- indexer             | text                     |           | not null | 
- num_parts           | integer                  |           | not null | 
- uploaded_parts      | integer[]                |           | not null | 
- process_after       | timestamp with time zone |           |          | 
- num_resets          | integer                  |           | not null | 0
- upload_size         | bigint                   |           |          | 
- num_failures        | integer                  |           | not null | 0
- associated_index_id | bigint                   |           |          | 
- committed_at        | timestamp with time zone |           |          | 
+         Column         |           Type           | Collation | Nullable |                Default                 
+------------------------+--------------------------+-----------+----------+----------------------------------------
+ id                     | integer                  |           | not null | nextval('lsif_dumps_id_seq'::regclass)
+ commit                 | text                     |           | not null | 
+ root                   | text                     |           | not null | ''::text
+ uploaded_at            | timestamp with time zone |           | not null | now()
+ state                  | text                     |           | not null | 'queued'::text
+ failure_message        | text                     |           |          | 
+ started_at             | timestamp with time zone |           |          | 
+ finished_at            | timestamp with time zone |           |          | 
+ repository_id          | integer                  |           | not null | 
+ indexer                | text                     |           | not null | 
+ num_parts              | integer                  |           | not null | 
+ uploaded_parts         | integer[]                |           | not null | 
+ process_after          | timestamp with time zone |           |          | 
+ num_resets             | integer                  |           | not null | 0
+ upload_size            | bigint                   |           |          | 
+ num_failures           | integer                  |           | not null | 0
+ associated_index_id    | bigint                   |           |          | 
+ committed_at           | timestamp with time zone |           |          | 
+ commit_last_checked_at | timestamp with time zone |           |          | 
+ worker_hostname        | text                     |           | not null | ''::text
+ last_heartbeat_at      | timestamp with time zone |           |          | 
 Indexes:
     "lsif_uploads_pkey" PRIMARY KEY, btree (id)
     "lsif_uploads_repository_id_commit_root_indexer" UNIQUE, btree (repository_id, commit, root, indexer) WHERE state = 'completed'::text
+    "lsif_uploads_associated_index_id" btree (associated_index_id)
+    "lsif_uploads_commit_last_checked_at" btree (commit_last_checked_at) WHERE state <> 'deleted'::text
     "lsif_uploads_committed_at" btree (committed_at) WHERE state = 'completed'::text
     "lsif_uploads_state" btree (state)
     "lsif_uploads_uploaded_at" btree (uploaded_at)
 Check constraints:
     "lsif_uploads_commit_valid_chars" CHECK (commit ~ '^[a-z0-9]{40}$'::text)
 Referenced by:
+    TABLE "lsif_dependency_indexing_jobs" CONSTRAINT "lsif_dependency_indexing_jobs_upload_id_fkey" FOREIGN KEY (upload_id) REFERENCES lsif_uploads(id) ON DELETE CASCADE
     TABLE "lsif_packages" CONSTRAINT "lsif_packages_dump_id_fkey" FOREIGN KEY (dump_id) REFERENCES lsif_uploads(id) ON DELETE CASCADE
     TABLE "lsif_references" CONSTRAINT "lsif_references_dump_id_fkey" FOREIGN KEY (dump_id) REFERENCES lsif_uploads(id) ON DELETE CASCADE
 
@@ -943,10 +1110,12 @@ Stores metadata about an LSIF index uploaded by a user.
 
 # Table "public.lsif_uploads_visible_at_tip"
 ```
-    Column     |  Type   | Collation | Nullable | Default 
----------------+---------+-----------+----------+---------
- repository_id | integer |           | not null | 
- upload_id     | integer |           | not null | 
+       Column       |  Type   | Collation | Nullable | Default  
+--------------------+---------+-----------+----------+----------
+ repository_id      | integer |           | not null | 
+ upload_id          | integer |           | not null | 
+ branch_or_tag_name | text    |           | not null | ''::text
+ is_default_branch  | boolean |           | not null | false
 Indexes:
     "lsif_uploads_visible_at_tip_repository_id_upload_id" btree (repository_id, upload_id)
 
@@ -954,7 +1123,11 @@ Indexes:
 
 Associates a repository with the set of LSIF upload identifiers that can serve intelligence for the tip of the default branch.
 
-**upload_id**: The identifier of an upload visible at the tip of the default branch.
+**branch_or_tag_name**: The name of the branch or tag.
+
+**is_default_branch**: Whether the specified branch is the default of the repository. Always false for tags.
+
+**upload_id**: The identifier of the upload visible from the tip of the specified branch or tag.
 
 # Table "public.names"
 ```
@@ -1053,8 +1226,10 @@ Check constraints:
     "orgs_name_valid_chars" CHECK (name ~ '^[a-zA-Z0-9](?:[a-zA-Z0-9]|[-.](?=[a-zA-Z0-9]))*-?$'::citext)
 Referenced by:
     TABLE "batch_changes" CONSTRAINT "batch_changes_namespace_org_id_fkey" FOREIGN KEY (namespace_org_id) REFERENCES orgs(id) ON DELETE CASCADE DEFERRABLE
+    TABLE "batch_spec_executions" CONSTRAINT "batch_spec_executions_namespace_org_id_fkey" FOREIGN KEY (namespace_org_id) REFERENCES orgs(id) DEFERRABLE
     TABLE "cm_monitors" CONSTRAINT "cm_monitors_org_id_fk" FOREIGN KEY (namespace_org_id) REFERENCES orgs(id) ON DELETE CASCADE
     TABLE "cm_recipients" CONSTRAINT "cm_recipients_org_id_fk" FOREIGN KEY (namespace_org_id) REFERENCES orgs(id) ON DELETE CASCADE
+    TABLE "feature_flag_overrides" CONSTRAINT "feature_flag_overrides_namespace_org_id_fkey" FOREIGN KEY (namespace_org_id) REFERENCES orgs(id) ON DELETE CASCADE
     TABLE "names" CONSTRAINT "names_org_id_fkey" FOREIGN KEY (org_id) REFERENCES orgs(id) ON UPDATE CASCADE ON DELETE CASCADE
     TABLE "org_invitations" CONSTRAINT "org_invitations_org_id_fkey" FOREIGN KEY (org_id) REFERENCES orgs(id)
     TABLE "org_members" CONSTRAINT "org_members_references_orgs" FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
@@ -1067,26 +1242,27 @@ Referenced by:
 
 # Table "public.out_of_band_migrations"
 ```
-     Column      |           Type           | Collation | Nullable |                      Default                       
------------------+--------------------------+-----------+----------+----------------------------------------------------
- id              | integer                  |           | not null | nextval('out_of_band_migrations_id_seq'::regclass)
- team            | text                     |           | not null | 
- component       | text                     |           | not null | 
- description     | text                     |           | not null | 
- introduced      | text                     |           | not null | 
- deprecated      | text                     |           |          | 
- progress        | double precision         |           | not null | 0
- created         | timestamp with time zone |           | not null | now()
- last_updated    | timestamp with time zone |           |          | 
- non_destructive | boolean                  |           | not null | 
- apply_reverse   | boolean                  |           | not null | false
+          Column          |           Type           | Collation | Nullable |                      Default                       
+--------------------------+--------------------------+-----------+----------+----------------------------------------------------
+ id                       | integer                  |           | not null | nextval('out_of_band_migrations_id_seq'::regclass)
+ team                     | text                     |           | not null | 
+ component                | text                     |           | not null | 
+ description              | text                     |           | not null | 
+ progress                 | double precision         |           | not null | 0
+ created                  | timestamp with time zone |           | not null | now()
+ last_updated             | timestamp with time zone |           |          | 
+ non_destructive          | boolean                  |           | not null | 
+ apply_reverse            | boolean                  |           | not null | false
+ is_enterprise            | boolean                  |           | not null | false
+ introduced_version_major | integer                  |           | not null | 
+ introduced_version_minor | integer                  |           | not null | 
+ deprecated_version_major | integer                  |           |          | 
+ deprecated_version_minor | integer                  |           |          | 
 Indexes:
     "out_of_band_migrations_pkey" PRIMARY KEY, btree (id)
 Check constraints:
     "out_of_band_migrations_component_nonempty" CHECK (component <> ''::text)
-    "out_of_band_migrations_deprecated_valid_version" CHECK (deprecated ~ '^(\d+)\.(\d+)\.(\d+)$'::text)
     "out_of_band_migrations_description_nonempty" CHECK (description <> ''::text)
-    "out_of_band_migrations_introduced_valid_version" CHECK (introduced ~ '^(\d+)\.(\d+)\.(\d+)$'::text)
     "out_of_band_migrations_progress_range" CHECK (progress >= 0::double precision AND progress <= 1::double precision)
     "out_of_band_migrations_team_nonempty" CHECK (team <> ''::text)
 Referenced by:
@@ -1102,13 +1278,19 @@ Stores metadata and progress about an out-of-band migration routine.
 
 **created**: The date and time the migration was inserted into the database (via an upgrade).
 
-**deprecated**: The lowest Sourcegraph version that assumes the migration has completed.
+**deprecated_version_major**: The lowest Sourcegraph version (major component) that assumes the migration has completed.
+
+**deprecated_version_minor**: The lowest Sourcegraph version (minor component) that assumes the migration has completed.
 
 **description**: A brief description about the migration.
 
 **id**: A globally unique primary key for this migration. The same key is used consistently across all Sourcegraph instances for the same migration.
 
-**introduced**: The Sourcegraph version in which this migration was first introduced.
+**introduced_version_major**: The Sourcegraph version (major component) in which this migration was first introduced.
+
+**introduced_version_minor**: The Sourcegraph version (minor component) in which this migration was first introduced.
+
+**is_enterprise**: When true, these migrations are invisible to OSS mode.
 
 **last_updated**: The date and time the migration was last updated.
 
@@ -1279,18 +1461,23 @@ Referenced by:
  metadata              | jsonb                    |           | not null | '{}'::jsonb
  private               | boolean                  |           | not null | false
  cloned                | boolean                  |           | not null | false
+ stars                 | integer                  |           |          | 
+ blocked               | jsonb                    |           |          | 
 Indexes:
     "repo_pkey" PRIMARY KEY, btree (id)
     "repo_external_unique_idx" UNIQUE, btree (external_service_type, external_service_id, external_id)
     "repo_name_unique" UNIQUE CONSTRAINT, btree (name) DEFERRABLE
     "repo_archived" btree (archived)
+    "repo_blocked_idx" btree ((blocked IS NOT NULL))
     "repo_cloned" btree (cloned)
     "repo_created_at" btree (created_at)
     "repo_fork" btree (fork)
+    "repo_is_not_blocked_idx" btree ((blocked IS NULL))
     "repo_metadata_gin_idx" gin (metadata)
     "repo_name_idx" btree (lower(name::text) COLLATE "C")
     "repo_name_trgm" gin (lower(name::text) gin_trgm_ops)
     "repo_private" btree (private)
+    "repo_stars_idx" btree (stars DESC NULLS LAST)
     "repo_uri_idx" btree (uri)
 Check constraints:
     "check_name_nonempty" CHECK (name <> ''::citext)
@@ -1298,13 +1485,24 @@ Check constraints:
 Referenced by:
     TABLE "changeset_specs" CONSTRAINT "changeset_specs_repo_id_fkey" FOREIGN KEY (repo_id) REFERENCES repo(id) DEFERRABLE
     TABLE "changesets" CONSTRAINT "changesets_repo_id_fkey" FOREIGN KEY (repo_id) REFERENCES repo(id) ON DELETE CASCADE DEFERRABLE
-    TABLE "default_repos" CONSTRAINT "default_repos_repo_id_fkey" FOREIGN KEY (repo_id) REFERENCES repo(id) ON DELETE CASCADE
     TABLE "discussion_threads_target_repo" CONSTRAINT "discussion_threads_target_repo_repo_id_fkey" FOREIGN KEY (repo_id) REFERENCES repo(id) ON DELETE CASCADE
     TABLE "external_service_repos" CONSTRAINT "external_service_repos_repo_id_fkey" FOREIGN KEY (repo_id) REFERENCES repo(id) ON DELETE CASCADE DEFERRABLE
     TABLE "gitserver_repos" CONSTRAINT "gitserver_repos_repo_id_fkey" FOREIGN KEY (repo_id) REFERENCES repo(id) ON DELETE CASCADE
     TABLE "lsif_index_configuration" CONSTRAINT "lsif_index_configuration_repository_id_fkey" FOREIGN KEY (repository_id) REFERENCES repo(id) ON DELETE CASCADE
+    TABLE "lsif_retention_configuration" CONSTRAINT "lsif_retention_configuration_repository_id_fkey" FOREIGN KEY (repository_id) REFERENCES repo(id) ON DELETE CASCADE
     TABLE "search_context_repos" CONSTRAINT "search_context_repos_repo_id_fk" FOREIGN KEY (repo_id) REFERENCES repo(id) ON DELETE CASCADE
     TABLE "user_public_repos" CONSTRAINT "user_public_repos_repo_id_fkey" FOREIGN KEY (repo_id) REFERENCES repo(id) ON DELETE CASCADE
+Policies:
+    POLICY "sg_repo_access_policy"
+      TO sg_service
+      USING ((((NOT (current_setting('rls.use_permissions_user_mapping'::text))::boolean) AND ((private IS FALSE) OR (EXISTS ( SELECT
+   FROM (external_services es
+     JOIN external_service_repos esr ON (((esr.external_service_id = es.id) AND (esr.repo_id = repo.id) AND (es.unrestricted = true) AND (es.deleted_at IS NULL))))
+ LIMIT 1)))) OR (EXISTS ( SELECT 1
+   FROM external_service_repos
+  WHERE ((external_service_repos.repo_id = repo.id) AND (external_service_repos.user_id = (current_setting('rls.user_id'::text))::integer)))) OR ( SELECT (user_permissions.object_ids_ints @> intset(repo.id))
+   FROM user_permissions
+  WHERE ((user_permissions.user_id = (current_setting('rls.user_id'::text))::integer) AND (user_permissions.permission = current_setting('rls.permission'::text)) AND (user_permissions.object_type = 'repos'::text)))))
 Triggers:
     trig_delete_repo_ref_on_external_service_repos AFTER UPDATE OF deleted_at ON repo FOR EACH ROW EXECUTE FUNCTION delete_repo_ref_on_external_service_repos()
 
@@ -1417,6 +1615,51 @@ Referenced by:
 
 ```
 
+# Table "public.security_event_logs"
+```
+      Column       |           Type           | Collation | Nullable |                     Default                     
+-------------------+--------------------------+-----------+----------+-------------------------------------------------
+ id                | bigint                   |           | not null | nextval('security_event_logs_id_seq'::regclass)
+ name              | text                     |           | not null | 
+ url               | text                     |           | not null | 
+ user_id           | integer                  |           | not null | 
+ anonymous_user_id | text                     |           | not null | 
+ source            | text                     |           | not null | 
+ argument          | jsonb                    |           | not null | 
+ version           | text                     |           | not null | 
+ timestamp         | timestamp with time zone |           | not null | 
+Indexes:
+    "security_event_logs_pkey" PRIMARY KEY, btree (id)
+    "security_event_logs_anonymous_user_id" btree (anonymous_user_id)
+    "security_event_logs_name" btree (name)
+    "security_event_logs_source" btree (source)
+    "security_event_logs_timestamp" btree ("timestamp")
+    "security_event_logs_timestamp_at_utc" btree (date(timezone('UTC'::text, "timestamp")))
+    "security_event_logs_user_id" btree (user_id)
+Check constraints:
+    "security_event_logs_check_has_user" CHECK (user_id = 0 AND anonymous_user_id <> ''::text OR user_id <> 0 AND anonymous_user_id = ''::text OR user_id <> 0 AND anonymous_user_id <> ''::text)
+    "security_event_logs_check_name_not_empty" CHECK (name <> ''::text)
+    "security_event_logs_check_source_not_empty" CHECK (source <> ''::text)
+    "security_event_logs_check_version_not_empty" CHECK (version <> ''::text)
+
+```
+
+Contains security-relevant events with a long time horizon for storage.
+
+**anonymous_user_id**: The UUID of the actor associated with the event.
+
+**argument**: An arbitrary JSON blob containing event data.
+
+**name**: The event name as a CAPITALIZED_SNAKE_CASE string.
+
+**source**: The site section (WEB, BACKEND, etc.) that generated the event.
+
+**url**: The URL within the Sourcegraph app which generated the event.
+
+**user_id**: The ID of the actor associated with the event.
+
+**version**: The version of Sourcegraph which generated the event.
+
 # Table "public.settings"
 ```
      Column     |           Type           | Collation | Nullable |               Default                
@@ -1430,6 +1673,7 @@ Referenced by:
 Indexes:
     "settings_pkey" PRIMARY KEY, btree (id)
     "settings_org_id_idx" btree (org_id)
+    "settings_user_id_idx" btree (user_id)
 Foreign-key constraints:
     "settings_author_user_id_fkey" FOREIGN KEY (author_user_id) REFERENCES users(id) ON DELETE RESTRICT
     "settings_references_orgs" FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
@@ -1478,12 +1722,15 @@ Foreign-key constraints:
  user_id               | integer                  |           | not null | 
  external_service_type | text                     |           | not null | 
  external_service_id   | text                     |           | not null | 
- credential            | text                     |           | not null | 
  created_at            | timestamp with time zone |           | not null | now()
  updated_at            | timestamp with time zone |           | not null | now()
+ credential            | bytea                    |           | not null | 
+ ssh_migration_applied | boolean                  |           | not null | false
+ encryption_key_id     | text                     |           | not null | ''::text
 Indexes:
     "user_credentials_pkey" PRIMARY KEY, btree (id)
     "user_credentials_domain_user_id_external_service_type_exter_key" UNIQUE CONSTRAINT, btree (domain, user_id, external_service_type, external_service_id)
+    "user_credentials_credential_idx" btree ((encryption_key_id = ANY (ARRAY[''::text, 'previously-migrated'::text])))
 Foreign-key constraints:
     "user_credentials_user_id_fkey" FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE DEFERRABLE
 
@@ -1621,6 +1868,8 @@ Referenced by:
     TABLE "batch_changes" CONSTRAINT "batch_changes_initial_applier_id_fkey" FOREIGN KEY (initial_applier_id) REFERENCES users(id) ON DELETE SET NULL DEFERRABLE
     TABLE "batch_changes" CONSTRAINT "batch_changes_last_applier_id_fkey" FOREIGN KEY (last_applier_id) REFERENCES users(id) ON DELETE SET NULL DEFERRABLE
     TABLE "batch_changes" CONSTRAINT "batch_changes_namespace_user_id_fkey" FOREIGN KEY (namespace_user_id) REFERENCES users(id) ON DELETE CASCADE DEFERRABLE
+    TABLE "batch_spec_executions" CONSTRAINT "batch_spec_executions_namespace_user_id_fkey" FOREIGN KEY (namespace_user_id) REFERENCES users(id) DEFERRABLE
+    TABLE "batch_spec_executions" CONSTRAINT "batch_spec_executions_user_id_fkey" FOREIGN KEY (user_id) REFERENCES users(id) DEFERRABLE
     TABLE "batch_specs" CONSTRAINT "batch_specs_user_id_fkey" FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL DEFERRABLE
     TABLE "changeset_jobs" CONSTRAINT "changeset_jobs_user_id_fkey" FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE DEFERRABLE
     TABLE "changeset_specs" CONSTRAINT "changeset_specs_user_id_fkey" FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL DEFERRABLE
@@ -1637,6 +1886,7 @@ Referenced by:
     TABLE "discussion_threads" CONSTRAINT "discussion_threads_author_user_id_fkey" FOREIGN KEY (author_user_id) REFERENCES users(id) ON DELETE RESTRICT
     TABLE "external_service_repos" CONSTRAINT "external_service_repos_user_id_fkey" FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE DEFERRABLE
     TABLE "external_services" CONSTRAINT "external_services_namepspace_user_id_fkey" FOREIGN KEY (namespace_user_id) REFERENCES users(id) ON DELETE CASCADE DEFERRABLE
+    TABLE "feature_flag_overrides" CONSTRAINT "feature_flag_overrides_namespace_user_id_fkey" FOREIGN KEY (namespace_user_id) REFERENCES users(id) ON DELETE CASCADE
     TABLE "names" CONSTRAINT "names_user_id_fkey" FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE
     TABLE "org_invitations" CONSTRAINT "org_invitations_recipient_user_id_fkey" FOREIGN KEY (recipient_user_id) REFERENCES users(id)
     TABLE "org_invitations" CONSTRAINT "org_invitations_sender_user_id_fkey" FOREIGN KEY (sender_user_id) REFERENCES users(id)
@@ -1661,13 +1911,16 @@ Triggers:
 
 # Table "public.versions"
 ```
-   Column   |           Type           | Collation | Nullable | Default 
-------------+--------------------------+-----------+----------+---------
- service    | text                     |           | not null | 
- version    | text                     |           | not null | 
- updated_at | timestamp with time zone |           | not null | now()
+    Column     |           Type           | Collation | Nullable | Default 
+---------------+--------------------------+-----------+----------+---------
+ service       | text                     |           | not null | 
+ version       | text                     |           | not null | 
+ updated_at    | timestamp with time zone |           | not null | now()
+ first_version | text                     |           | not null | 
 Indexes:
     "versions_pkey" PRIMARY KEY, btree (service)
+Triggers:
+    versions_insert BEFORE INSERT ON versions FOR EACH ROW EXECUTE FUNCTION versions_insert_row_trigger()
 
 ```
 
@@ -1792,7 +2045,7 @@ Indexes:
     u.associated_index_id,
     u.finished_at AS processed_at
    FROM lsif_uploads u
-  WHERE (u.state = 'completed'::text);
+  WHERE ((u.state = 'completed'::text) OR (u.state = 'deleting'::text));
 ```
 
 # View "public.lsif_dumps_with_repository_name"
@@ -1956,41 +2209,44 @@ Indexes:
 
 # View "public.reconciler_changesets"
 ```
-          Column          |           Type           | Collation | Nullable | Default 
---------------------------+--------------------------+-----------+----------+---------
- id                       | bigint                   |           |          | 
- batch_change_ids         | jsonb                    |           |          | 
- repo_id                  | integer                  |           |          | 
- created_at               | timestamp with time zone |           |          | 
- updated_at               | timestamp with time zone |           |          | 
- metadata                 | jsonb                    |           |          | 
- external_id              | text                     |           |          | 
- external_service_type    | text                     |           |          | 
- external_deleted_at      | timestamp with time zone |           |          | 
- external_branch          | text                     |           |          | 
- external_updated_at      | timestamp with time zone |           |          | 
- external_state           | text                     |           |          | 
- external_review_state    | text                     |           |          | 
- external_check_state     | text                     |           |          | 
- diff_stat_added          | integer                  |           |          | 
- diff_stat_changed        | integer                  |           |          | 
- diff_stat_deleted        | integer                  |           |          | 
- sync_state               | jsonb                    |           |          | 
- current_spec_id          | bigint                   |           |          | 
- previous_spec_id         | bigint                   |           |          | 
- publication_state        | text                     |           |          | 
- owned_by_batch_change_id | bigint                   |           |          | 
- reconciler_state         | text                     |           |          | 
- failure_message          | text                     |           |          | 
- started_at               | timestamp with time zone |           |          | 
- finished_at              | timestamp with time zone |           |          | 
- process_after            | timestamp with time zone |           |          | 
- num_resets               | integer                  |           |          | 
- closing                  | boolean                  |           |          | 
- num_failures             | integer                  |           |          | 
- log_contents             | text                     |           |          | 
- execution_logs           | json[]                   |           |          | 
- syncer_error             | text                     |           |          | 
+          Column          |                     Type                     | Collation | Nullable | Default 
+--------------------------+----------------------------------------------+-----------+----------+---------
+ id                       | bigint                                       |           |          | 
+ batch_change_ids         | jsonb                                        |           |          | 
+ repo_id                  | integer                                      |           |          | 
+ created_at               | timestamp with time zone                     |           |          | 
+ updated_at               | timestamp with time zone                     |           |          | 
+ metadata                 | jsonb                                        |           |          | 
+ external_id              | text                                         |           |          | 
+ external_service_type    | text                                         |           |          | 
+ external_deleted_at      | timestamp with time zone                     |           |          | 
+ external_branch          | text                                         |           |          | 
+ external_updated_at      | timestamp with time zone                     |           |          | 
+ external_state           | text                                         |           |          | 
+ external_review_state    | text                                         |           |          | 
+ external_check_state     | text                                         |           |          | 
+ diff_stat_added          | integer                                      |           |          | 
+ diff_stat_changed        | integer                                      |           |          | 
+ diff_stat_deleted        | integer                                      |           |          | 
+ sync_state               | jsonb                                        |           |          | 
+ current_spec_id          | bigint                                       |           |          | 
+ previous_spec_id         | bigint                                       |           |          | 
+ publication_state        | text                                         |           |          | 
+ owned_by_batch_change_id | bigint                                       |           |          | 
+ reconciler_state         | text                                         |           |          | 
+ failure_message          | text                                         |           |          | 
+ started_at               | timestamp with time zone                     |           |          | 
+ finished_at              | timestamp with time zone                     |           |          | 
+ process_after            | timestamp with time zone                     |           |          | 
+ num_resets               | integer                                      |           |          | 
+ closing                  | boolean                                      |           |          | 
+ num_failures             | integer                                      |           |          | 
+ log_contents             | text                                         |           |          | 
+ execution_logs           | json[]                                       |           |          | 
+ syncer_error             | text                                         |           |          | 
+ external_title           | text                                         |           |          | 
+ worker_hostname          | text                                         |           |          | 
+ ui_publication_state     | batch_changes_changeset_ui_publication_state |           |          | 
 
 ```
 
@@ -2029,7 +2285,10 @@ Indexes:
     c.num_failures,
     c.log_contents,
     c.execution_logs,
-    c.syncer_error
+    c.syncer_error,
+    c.external_title,
+    c.worker_hostname,
+    c.ui_publication_state
    FROM (changesets c
      JOIN repo r ON ((r.id = c.repo_id)))
   WHERE ((r.deleted_at IS NULL) AND (EXISTS ( SELECT 1
@@ -2090,6 +2349,12 @@ Indexes:
   WHERE ((changeset_specs.external_id IS NOT NULL) AND (repo.deleted_at IS NULL));
 ```
 
+# Type batch_changes_changeset_ui_publication_state
+
+- UNPUBLISHED
+- DRAFT
+- PUBLISHED
+
 # Type cm_email_priority
 
 - NORMAL
@@ -2099,6 +2364,11 @@ Indexes:
 
 - critical
 - site
+
+# Type feature_flag_type
+
+- bool
+- rollout
 
 # Type lsif_index_state
 

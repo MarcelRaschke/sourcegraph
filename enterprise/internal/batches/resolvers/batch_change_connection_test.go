@@ -16,7 +16,7 @@ import (
 	btypes "github.com/sourcegraph/sourcegraph/enterprise/internal/batches/types"
 	"github.com/sourcegraph/sourcegraph/internal/actor"
 	"github.com/sourcegraph/sourcegraph/internal/database"
-	"github.com/sourcegraph/sourcegraph/internal/database/dbtesting"
+	"github.com/sourcegraph/sourcegraph/internal/database/dbtest"
 )
 
 func TestBatchChangeConnectionResolver(t *testing.T) {
@@ -25,11 +25,11 @@ func TestBatchChangeConnectionResolver(t *testing.T) {
 	}
 
 	ctx := backend.WithAuthzBypass(context.Background())
-	db := dbtesting.GetDB(t)
+	db := dbtest.NewDB(t, "")
 
 	userID := ct.CreateTestUser(t, db, true).ID
 
-	cstore := store.New(db)
+	cstore := store.New(db, nil)
 	repoStore := database.ReposWith(cstore)
 	esStore := database.ExternalServicesWith(cstore)
 
@@ -177,14 +177,14 @@ func TestBatchChangesListing(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	db := dbtesting.GetDB(t)
+	db := dbtest.NewDB(t, "")
 
 	userID := ct.CreateTestUser(t, db, true).ID
 	actorCtx := actor.WithActor(ctx, actor.FromUser(userID))
 
 	orgID := ct.InsertTestOrg(t, db, "org")
 
-	store := store.New(db)
+	store := store.New(db, nil)
 
 	r := &Resolver{store: store}
 	s, err := graphqlbackend.NewSchema(db, r, nil, nil, nil, nil, nil, nil)

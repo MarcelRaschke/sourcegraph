@@ -5,11 +5,7 @@ import { catchError, map, switchMap } from 'rxjs/operators'
 import { Toggle } from '@sourcegraph/branded/src/components/Toggle'
 import { ToggleBig } from '@sourcegraph/branded/src/components/ToggleBig'
 import { PlatformContextProps } from '@sourcegraph/shared/src/platform/context'
-import {
-    SettingsCascadeProps,
-    SettingsCascadeOrError,
-    ConfiguredSubjectOrError,
-} from '@sourcegraph/shared/src/settings/settings'
+import { SettingsCascadeProps, SettingsSubject } from '@sourcegraph/shared/src/settings/settings'
 import { useEventObservable } from '@sourcegraph/shared/src/util/useObservable'
 
 import { eventLogger } from '../tracking/eventLogger'
@@ -30,6 +26,11 @@ interface Props extends SettingsCascadeProps, PlatformContextProps<'updateSettin
     onToggleChange?: (enabled: boolean) => void
     /** Additional logic to run on update error */
     onToggleError?: (revertedValue: OptimisticUpdateFailure<boolean>) => void
+    /** Settings subject that the toggle should act upon */
+    subject: SettingsSubject | null
+
+    /** Render text left of the toggle based on optimistic enablement state */
+    renderText?: (enabled: boolean) => JSX.Element
 }
 
 export interface OptimisticUpdateFailure<T> {
@@ -86,6 +87,8 @@ export const ExtensionToggle: React.FunctionComponent<Props> = ({
     onHover,
     onToggleChange,
     onToggleError,
+    subject,
+    renderText,
 }) => {
     const [optimisticEnabled, setOptimisticEnabled] = useState(enabled)
     const [askingForPermission, setAskingForPermission] = useState<boolean>(false)
@@ -105,13 +108,11 @@ export const ExtensionToggle: React.FunctionComponent<Props> = ({
 
     const updateEnablement = useCallback(
         (enabled: boolean) => {
-            const highestPrecedenceSubject = getHighestPrecedenceSubject(settingsCascade)
-
-            if (!highestPrecedenceSubject) {
+            if (!subject) {
                 return
             }
 
-            eventLogger.log('ExtensionToggled', { extension_id: extensionID })
+            eventLogger.log('ExtensionToggled', { extension_id: extensionID, subject_type: subject.__typename })
 
             if (onToggleChange) {
                 onToggleChange(enabled)
@@ -121,13 +122,13 @@ export const ExtensionToggle: React.FunctionComponent<Props> = ({
             nextOptimisticUpdate({
                 previousValue: !enabled,
                 optimisticValue: enabled,
-                promise: platformContext.updateSettings(highestPrecedenceSubject.subject.id, {
+                promise: platformContext.updateSettings(subject.id, {
                     path: ['extensions', extensionID],
                     value: enabled,
                 }),
             })
         },
-        [platformContext, extensionID, onToggleChange, nextOptimisticUpdate, settingsCascade]
+        [platformContext, extensionID, onToggleChange, nextOptimisticUpdate, subject]
     )
 
     const onToggle = useCallback(
@@ -157,13 +158,14 @@ export const ExtensionToggle: React.FunctionComponent<Props> = ({
         onHover,
         className,
         value: optimisticEnabled,
-        title: userCannotToggle ? undefined : optimisticEnabled ? 'Click to disable' : 'Click to enable',
+        title: userCannotToggle || !subject ? undefined : optimisticEnabled ? 'Click to disable' : 'Click to enable',
         dataTest: `extension-toggle-${extensionID}`,
-        disabled: userCannotToggle,
+        disabled: userCannotToggle || !subject,
     }
 
     return (
         <>
+            {renderText?.(optimisticEnabled)}
             {big ? <ToggleBig {...props} /> : <Toggle {...props} />}
             {askingForPermission && (
                 <ExtensionPermissionModal
@@ -174,23 +176,4 @@ export const ExtensionToggle: React.FunctionComponent<Props> = ({
             )}
         </>
     )
-}
-
-/** If this function returns undefined, do not update extension enablement */
-function getHighestPrecedenceSubject(settingsCascade: SettingsCascadeOrError): ConfiguredSubjectOrError | undefined {
-    if (settingsCascade.subjects === null) {
-        return
-    }
-
-    // Only operate on the highest precedence settings, for simplicity.
-    const subjects = settingsCascade.subjects
-    if (subjects.length === 0) {
-        return
-    }
-    const highestPrecedenceSubject = subjects[subjects.length - 1]
-    if (!highestPrecedenceSubject || !highestPrecedenceSubject.subject.viewerCanAdminister) {
-        return
-    }
-
-    return highestPrecedenceSubject
 }

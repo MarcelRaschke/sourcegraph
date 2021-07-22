@@ -3,15 +3,15 @@ package codeintel
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"log"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/inconshreveable/log15"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/sourcegraph/sourcegraph/enterprise/cmd/frontend/internal/codeintel/autoindex/enqueuer"
+	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/autoindex/enqueuer"
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/gitserver"
 	store "github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/stores/dbstore"
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/stores/lsifstore"
@@ -19,12 +19,15 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/database/dbconn"
 	"github.com/sourcegraph/sourcegraph/internal/database/dbutil"
+	"github.com/sourcegraph/sourcegraph/internal/database/locker"
 	"github.com/sourcegraph/sourcegraph/internal/observation"
+	"github.com/sourcegraph/sourcegraph/internal/repoupdater"
 	"github.com/sourcegraph/sourcegraph/internal/trace"
 )
 
 var services struct {
 	dbStore         *store.Store
+	locker          *locker.Locker
 	lsifStore       *lsifstore.Store
 	uploadStore     uploadstore.Store
 	gitserverClient *gitserver.Client
@@ -37,7 +40,7 @@ var once sync.Once
 func initServices(ctx context.Context, db dbutil.DB) error {
 	once.Do(func() {
 		if err := config.UploadStoreConfig.Validate(); err != nil {
-			services.err = fmt.Errorf("failed to load config: %s", err)
+			services.err = errors.Errorf("failed to load config: %s", err)
 			return
 		}
 
@@ -53,6 +56,7 @@ func initServices(ctx context.Context, db dbutil.DB) error {
 
 		// Initialize stores
 		dbStore := store.NewWithDB(db, observationContext)
+		locker := locker.NewWithDB(db, "codeintel")
 		lsifStore := lsifstore.NewStore(codeIntelDB, observationContext)
 		uploadStore, err := uploadstore.CreateLazy(context.Background(), config.UploadStoreConfig, observationContext)
 		if err != nil {
@@ -63,9 +67,10 @@ func initServices(ctx context.Context, db dbutil.DB) error {
 		gitserverClient := gitserver.New(dbStore, observationContext)
 
 		// Initialize the index enqueuer
-		indexEnqueuer := enqueuer.NewIndexEnqueuer(&enqueuer.DBStoreShim{dbStore}, gitserverClient, observationContext)
+		indexEnqueuer := enqueuer.NewIndexEnqueuer(&enqueuer.DBStoreShim{dbStore}, gitserverClient, repoupdater.DefaultClient, observationContext)
 
 		services.dbStore = dbStore
+		services.locker = locker
 		services.lsifStore = lsifStore
 		services.uploadStore = uploadStore
 		services.gitserverClient = gitserverClient
@@ -83,7 +88,7 @@ func mustInitializeCodeIntelDB() *sql.DB {
 		}
 	})
 
-	db, err := dbconn.New(postgresDSN, "_codeintel")
+	db, err := dbconn.New(dbconn.Opts{DSN: postgresDSN, DBName: "codeintel", AppName: "frontend"})
 	if err != nil {
 		log.Fatalf("Failed to connect to codeintel database: %s", err)
 	}

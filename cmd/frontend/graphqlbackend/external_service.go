@@ -2,19 +2,19 @@ package graphqlbackend
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/graph-gophers/graphql-go/relay"
-	"github.com/pkg/errors"
+	"github.com/inconshreveable/log15"
 
-	"github.com/sourcegraph/sourcegraph/cmd/frontend/backend"
-	"github.com/sourcegraph/sourcegraph/internal/actor"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/database"
 	"github.com/sourcegraph/sourcegraph/internal/database/dbutil"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc"
+	"github.com/sourcegraph/sourcegraph/internal/rcache"
+	"github.com/sourcegraph/sourcegraph/internal/repos"
 	"github.com/sourcegraph/sourcegraph/internal/types"
 	"github.com/sourcegraph/sourcegraph/schema"
 )
@@ -37,21 +37,14 @@ func externalServiceByID(ctx context.Context, db dbutil.DB, gqlID graphql.ID) (*
 		return nil, err
 	}
 
-	es, err := database.GlobalExternalServices.GetByID(ctx, id)
+	es, err := database.ExternalServices(db).GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	// 🚨 SECURITY: Only site admins may read all or a user's external services.
-	// Otherwise, the authenticated user can only read external services under the same namespace.
-	if err := backend.CheckCurrentUserIsSiteAdmin(ctx); err != nil {
-		if es.NamespaceUserID == 0 {
-			return nil, err
-		} else if actor.FromContext(ctx).UID != es.NamespaceUserID {
-			return nil, errors.New("the authenticated user does not have access to this external service")
-		}
+	if err := checkExternalServiceAccess(ctx, db, es.NamespaceUserID); err != nil {
+		return nil, err
 	}
-
 	return &externalServiceResolver{db: db, externalService: es}, nil
 }
 
@@ -61,7 +54,7 @@ func marshalExternalServiceID(id int64) graphql.ID {
 
 func unmarshalExternalServiceID(id graphql.ID) (externalServiceID int64, err error) {
 	if kind := relay.UnmarshalKind(id); kind != externalServiceIDKind {
-		err = fmt.Errorf("expected graphql ID to have kind %q; got %q", externalServiceIDKind, kind)
+		err = errors.Errorf("expected graphql ID to have kind %q; got %q", externalServiceIDKind, kind)
 		return
 	}
 	err = relay.UnmarshalSpec(id, &externalServiceID)
@@ -148,7 +141,7 @@ func (r *externalServiceResolver) Warning() *string {
 }
 
 func (r *externalServiceResolver) LastSyncError(ctx context.Context) (*string, error) {
-	latestError, err := database.GlobalExternalServices.GetLastSyncError(ctx, r.externalService.ID)
+	latestError, err := database.ExternalServices(r.db).GetLastSyncError(ctx, r.externalService.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +152,7 @@ func (r *externalServiceResolver) LastSyncError(ctx context.Context) (*string, e
 }
 
 func (r *externalServiceResolver) RepoCount(ctx context.Context) (int32, error) {
-	return database.GlobalExternalServices.RepoCount(ctx, r.externalService.ID)
+	return database.ExternalServices(r.db).RepoCount(ctx, r.externalService.ID)
 }
 
 func (r *externalServiceResolver) LastSyncAt() *DateTime {
@@ -174,4 +167,20 @@ func (r *externalServiceResolver) NextSyncAt() *DateTime {
 		return nil
 	}
 	return &DateTime{Time: r.externalService.NextSyncAt}
+}
+
+var scopeCache = rcache.New("extsvc_token_scope")
+
+func (r *externalServiceResolver) GrantedScopes(ctx context.Context) (*[]string, error) {
+	scopes, err := repos.GrantedScopes(ctx, scopeCache, r.externalService)
+	if err != nil {
+		// It's possible that we fail to fetch scope from the code host, in this case we
+		// don't want the entire resolver to fail.
+		log15.Error("Getting service scope", "id", r.externalService.ID, "error", err)
+		return nil, nil
+	}
+	if scopes == nil {
+		return nil, nil
+	}
+	return &scopes, nil
 }

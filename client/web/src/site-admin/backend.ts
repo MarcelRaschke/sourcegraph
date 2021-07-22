@@ -42,8 +42,6 @@ import {
     DeleteUserVariables,
     UpdateMirrorRepositoryResult,
     UpdateMirrorRepositoryVariables,
-    ScheduleUserPermissionsSyncResult,
-    ScheduleUserPermissionsSyncVariables,
     ScheduleRepositoryPermissionsSyncResult,
     ScheduleRepositoryPermissionsSyncVariables,
     UserPublicRepositoriesResult,
@@ -254,6 +252,7 @@ function fetchAllRepositories(args: Partial<RepositoriesVariables>): Observable<
                 $notCloned: Boolean
                 $indexed: Boolean
                 $notIndexed: Boolean
+                $failedFetch: Boolean
             ) {
                 repositories(
                     first: $first
@@ -262,6 +261,7 @@ function fetchAllRepositories(args: Partial<RepositoriesVariables>): Observable<
                     notCloned: $notCloned
                     indexed: $indexed
                     notIndexed: $notIndexed
+                    failedFetch: $failedFetch
                 ) {
                     nodes {
                         ...SiteAdminRepositoryFields
@@ -280,6 +280,7 @@ function fetchAllRepositories(args: Partial<RepositoriesVariables>): Observable<
             notCloned: args.notCloned ?? true,
             indexed: args.indexed ?? true,
             notIndexed: args.notIndexed ?? true,
+            failedFetch: args.failedFetch ?? false,
             first: args.first ?? null,
             query: args.query ?? null,
         }
@@ -351,23 +352,6 @@ export function scheduleRepositoryPermissionsSync(args: { repository: Scalars['I
         gql`
             mutation ScheduleRepositoryPermissionsSync($repository: ID!) {
                 scheduleRepositoryPermissionsSync(repository: $repository) {
-                    alwaysNil
-                }
-            }
-        `,
-        args
-    ).pipe(
-        map(dataOrThrowErrors),
-        tap(() => resetAllMemoizationCaches()),
-        mapTo(undefined)
-    )
-}
-
-export function scheduleUserPermissionsSync(args: { user: Scalars['ID'] }): Observable<void> {
-    return requestGraphQL<ScheduleUserPermissionsSyncResult, ScheduleUserPermissionsSyncVariables>(
-        gql`
-            mutation ScheduleUserPermissionsSync($user: ID!) {
-                scheduleUserPermissionsSync(user: $user) {
                     alwaysNil
                 }
             }

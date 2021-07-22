@@ -16,7 +16,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/database"
-	"github.com/sourcegraph/sourcegraph/internal/database/dbtesting"
+	"github.com/sourcegraph/sourcegraph/internal/database/dbtest"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/github"
 	"github.com/sourcegraph/sourcegraph/internal/timeutil"
 	"github.com/sourcegraph/sourcegraph/schema"
@@ -28,13 +28,13 @@ func TestChangesetResolver(t *testing.T) {
 	}
 
 	ctx := backend.WithAuthzBypass(context.Background())
-	db := dbtesting.GetDB(t)
+	db := dbtest.NewDB(t, "")
 
 	userID := ct.CreateTestUser(t, db, true).ID
 
 	now := timeutil.Now()
 	clock := func() time.Time { return now }
-	cstore := store.NewWithClock(db, clock)
+	cstore := store.NewWithClock(db, nil, clock)
 	esStore := database.ExternalServicesWith(cstore)
 	repoStore := database.ReposWith(cstore)
 
@@ -156,7 +156,10 @@ func TestChangesetResolver(t *testing.T) {
 			UpdatedAt: now,
 		},
 	})
-	events := syncedGitHubChangeset.Events()
+	events, err := syncedGitHubChangeset.Events()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := cstore.UpsertChangesetEvents(ctx, events...); err != nil {
 		t.Fatal(err)
 	}

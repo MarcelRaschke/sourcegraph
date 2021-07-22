@@ -11,7 +11,7 @@ import { VersionContextProps } from '@sourcegraph/shared/src/search/util'
 import { SettingsCascadeProps } from '@sourcegraph/shared/src/settings/settings'
 import { isErrorLike } from '@sourcegraph/shared/src/util/errors'
 
-import { PatternTypeProps, CaseSensitivityProps, CopyQueryButtonProps, SearchContextProps } from '../..'
+import { PatternTypeProps, CaseSensitivityProps, SearchContextProps } from '../..'
 import { SearchPatternType } from '../../../graphql-operations'
 import { KEYBOARD_SHORTCUT_COPY_FULL_QUERY } from '../../../keyboardShortcuts/keyboardShortcuts'
 import { isMacPlatform } from '../../../util'
@@ -24,7 +24,6 @@ export interface TogglesProps
     extends PatternTypeProps,
         CaseSensitivityProps,
         SettingsCascadeProps,
-        CopyQueryButtonProps,
         VersionContextProps,
         Pick<SearchContextProps, 'showSearchContext' | 'selectedSearchContextSpec'> {
     navbarSearchQuery: string
@@ -37,13 +36,14 @@ export interface TogglesProps
 export const getFullQuery = (
     query: string,
     searchContextSpec: string,
+    versionContext: string | undefined,
     caseSensitive: boolean,
     patternType: SearchPatternType
 ): string => {
     const finalQuery = [query, `patternType:${patternType}`, caseSensitive ? 'case:yes' : '']
         .filter(queryPart => !!queryPart)
         .join(' ')
-    return appendContextFilter(finalQuery, searchContextSpec)
+    return appendContextFilter(finalQuery, searchContextSpec, versionContext)
 }
 
 /**
@@ -61,7 +61,6 @@ export const Toggles: React.FunctionComponent<TogglesProps> = (props: TogglesPro
         setCaseSensitivity,
         settingsCascade,
         className,
-        copyQueryButton,
         selectedSearchContextSpec,
     } = props
 
@@ -131,7 +130,13 @@ export const Toggles: React.FunctionComponent<TogglesProps> = (props: TogglesPro
         submitOnToggle({ newPatternType })
     }, [patternType, setPatternType, settingsCascade.final, submitOnToggle])
 
-    const fullQuery = getFullQuery(navbarSearchQuery, selectedSearchContextSpec || '', caseSensitive, patternType)
+    const fullQuery = getFullQuery(
+        navbarSearchQuery,
+        selectedSearchContextSpec || '',
+        versionContext,
+        caseSensitive,
+        patternType
+    )
 
     return (
         <div className={classNames('toggle-container', className)}>
@@ -165,7 +170,7 @@ export const Toggles: React.FunctionComponent<TogglesProps> = (props: TogglesPro
                 isActive={patternType === SearchPatternType.regexp}
                 onToggle={toggleRegexp}
                 icon={RegexIcon}
-                className="toggle-container__regexp-button test-regexp-toggle"
+                className="test-regexp-toggle"
                 activeClassName="test-regexp-toggle--active"
                 disableOn={[
                     {
@@ -192,17 +197,13 @@ export const Toggles: React.FunctionComponent<TogglesProps> = (props: TogglesPro
                     ]}
                 />
             )}
-            {copyQueryButton && (
-                <>
-                    <div className="toggle-container__separator" />
-                    <CopyQueryButton
-                        fullQuery={fullQuery}
-                        keyboardShortcutForFullCopy={KEYBOARD_SHORTCUT_COPY_FULL_QUERY}
-                        isMacPlatform={isMacPlatform}
-                        className="toggle-container__toggle toggle-container__copy-query-button"
-                    />
-                </>
-            )}
+            <div className="toggle-container__separator" />
+            <CopyQueryButton
+                fullQuery={fullQuery}
+                keyboardShortcutForFullCopy={KEYBOARD_SHORTCUT_COPY_FULL_QUERY}
+                isMacPlatform={isMacPlatform}
+                className="toggle-container__toggle toggle-container__copy-query-button"
+            />
         </div>
     )
 }

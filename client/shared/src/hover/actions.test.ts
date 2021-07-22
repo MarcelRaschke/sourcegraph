@@ -1,6 +1,6 @@
 import { Remote } from 'comlink'
 import { createMemoryHistory, MemoryHistory, createPath } from 'history'
-import { from, Observable, of, throwError, Subscription } from 'rxjs'
+import { from, Observable, of, Subscription } from 'rxjs'
 import { first } from 'rxjs/operators'
 import { TestScheduler } from 'rxjs/testing'
 import * as sinon from 'sinon'
@@ -16,7 +16,6 @@ import { FlatExtensionHostAPI } from '../api/contract'
 import { WorkspaceRootWithMetadata } from '../api/extension/extensionHostApi'
 import { integrationTestContext } from '../api/integration-test/testHelpers'
 import { TextDocumentPositionParameters } from '../api/protocol'
-import { PrivateRepoPublicSourcegraphComError } from '../backend/errors'
 import { SuccessGraphQLResult } from '../graphql/graphql'
 import { PlatformContext, URLToFileContext } from '../platform/context'
 import { resetAllMemoizationCaches } from '../util/memoizeObservable'
@@ -142,16 +141,16 @@ describe('getHoverActionsContext', () => {
                         'goToDefinition.url': null,
                         'goToDefinition.notFound': false,
                         'goToDefinition.error': false,
-                        'findReferences.url': '/r@v/-/blob/f#L2:2&tab=references',
+                        'findReferences.url': '/r@v/-/blob/f?L2:2#tab=references',
                         hoverPosition: FIXTURE_PARAMS,
                     },
                     // Show go to definition button, hide loader, show find references button
                     g: {
                         'goToDefinition.showLoading': false,
-                        'goToDefinition.url': '/r2@c2/-/blob/f2#L3:3',
+                        'goToDefinition.url': '/r2@c2/-/blob/f2?L3:3',
                         'goToDefinition.notFound': false,
                         'goToDefinition.error': false,
-                        'findReferences.url': '/r@v/-/blob/f#L2:2&tab=references',
+                        'findReferences.url': '/r@v/-/blob/f?L2:2#tab=references',
                         hoverPosition: FIXTURE_PARAMS,
                     },
                 }))()
@@ -214,16 +213,16 @@ describe('getHoverActionsContext', () => {
                         'goToDefinition.url': null,
                         'goToDefinition.notFound': false,
                         'goToDefinition.error': false,
-                        'findReferences.url': '/r@v/-/blob/f#L2:2&tab=references',
+                        'findReferences.url': '/r@v/-/blob/f?L2:2#tab=references',
                         hoverPosition: FIXTURE_PARAMS,
                     },
                     // Show go to definition button, hide loader, show find references button
                     g: {
                         'goToDefinition.showLoading': false,
-                        'goToDefinition.url': '/r2@c2/-/blob/f2#L3:3',
+                        'goToDefinition.url': '/r2@c2/-/blob/f2?L3:3',
                         'goToDefinition.notFound': false,
                         'goToDefinition.error': false,
-                        'findReferences.url': '/r@v/-/blob/f#L2:2&tab=references',
+                        'findReferences.url': '/r@v/-/blob/f?L2:2#tab=references',
                         hoverPosition: FIXTURE_PARAMS,
                     },
                 }))()
@@ -262,7 +261,7 @@ describe('getHoverActionsContext', () => {
                 // Go to definition
                 g: {
                     'goToDefinition.showLoading': false,
-                    'goToDefinition.url': '/r2@c2/-/blob/f2#L3:3',
+                    'goToDefinition.url': '/r2@c2/-/blob/f2?L3:3',
                     'goToDefinition.notFound': false,
                     'goToDefinition.error': false,
                     'findReferences.url': null,
@@ -271,10 +270,10 @@ describe('getHoverActionsContext', () => {
                 // Find references
                 f: {
                     'goToDefinition.showLoading': false,
-                    'goToDefinition.url': '/r2@c2/-/blob/f2#L3:3',
+                    'goToDefinition.url': '/r2@c2/-/blob/f2?L3:3',
                     'goToDefinition.notFound': false,
                     'goToDefinition.error': false,
-                    'findReferences.url': '/r@v/-/blob/f#L2:2&tab=references',
+                    'findReferences.url': '/r@v/-/blob/f?L2:2#tab=references',
                     hoverPosition: FIXTURE_PARAMS,
                 },
             } as {
@@ -314,7 +313,7 @@ describe('getHoverActionsContext', () => {
                 // Go to definition
                 g: {
                     'goToDefinition.showLoading': false,
-                    'goToDefinition.url': '/r2@c2/-/blob/f2#L3:3',
+                    'goToDefinition.url': '/r2@c2/-/blob/f2?L3:3',
                     'goToDefinition.notFound': false,
                     'goToDefinition.error': false,
                     'findReferences.url': null,
@@ -323,10 +322,10 @@ describe('getHoverActionsContext', () => {
                 // Find references button
                 f: {
                     'goToDefinition.showLoading': false,
-                    'goToDefinition.url': '/r2@c2/-/blob/f2#L3:3',
+                    'goToDefinition.url': '/r2@c2/-/blob/f2?L3:3',
                     'goToDefinition.notFound': false,
                     'goToDefinition.error': false,
-                    'findReferences.url': '/r@v/-/blob/f#L2:2&tab=references',
+                    'findReferences.url': '/r@v/-/blob/f?L2:2#tab=references',
                     hoverPosition: FIXTURE_PARAMS,
                 },
             } as {
@@ -404,37 +403,6 @@ describe('getDefinitionURL', () => {
             })
         })
 
-        it('fails gracefully when resolveRawRepoName() fails with a PrivateRepoPublicSourcegraph error', async () => {
-            const requestGraphQL = (): Observable<never> =>
-                throwError(new PrivateRepoPublicSourcegraphComError('ResolveRawRepoName'))
-            const urlToFile = sinon.spy()
-            await of<MaybeLoadingResult<Location[]>>({
-                isLoading: false,
-                result: [{ uri: 'git://r3?c3#f' }],
-            })
-                .pipe(
-                    getDefinitionURL(
-                        { urlToFile, requestGraphQL },
-                        {
-                            getWorkspaceRoots: () => of([FIXTURE_WORKSPACE]),
-                        },
-                        FIXTURE_PARAMS
-                    ),
-                    first(({ isLoading }) => !isLoading)
-                )
-                .toPromise()
-            sinon.assert.calledOnce(urlToFile)
-            sinon.assert.calledWith(urlToFile, {
-                commitID: undefined,
-                filePath: 'f',
-                position: undefined,
-                range: undefined,
-                rawRepoName: 'r3',
-                repoName: 'r3',
-                revision: 'v3',
-            })
-        })
-
         describe('when the result is inside the current root', () => {
             it('emits the definition URL the user input revision (not commit SHA) of the root', () =>
                 expect(
@@ -474,7 +442,7 @@ describe('getDefinitionURL', () => {
                             first(({ isLoading }) => !isLoading)
                         )
                         .toPromise()
-                ).resolves.toEqual({ isLoading: false, result: { url: '/r2@c2/-/blob/f2#L3:3', multiple: false } }))
+                ).resolves.toEqual({ isLoading: false, result: { url: '/r2@c2/-/blob/f2?L3:3', multiple: false } }))
 
             it('emits the definition URL without range', () =>
                 expect(
@@ -514,7 +482,7 @@ describe('getDefinitionURL', () => {
                     first()
                 )
                 .toPromise()
-        ).resolves.toEqual({ isLoading: false, result: { url: '/r@v/-/blob/f#L2:2&tab=def', multiple: true } }))
+        ).resolves.toEqual({ isLoading: false, result: { url: '/r@v/-/blob/f?L2:2#tab=def', multiple: true } }))
 })
 
 describe('registerHoverContributions()', () => {
@@ -578,7 +546,7 @@ describe('registerHoverContributions()', () => {
         const GO_TO_DEFINITION_PRELOADED_ACTION: ActionItemAction = {
             action: {
                 command: 'open',
-                commandArguments: ['/r2@c2/-/blob/f2#L3:3'],
+                commandArguments: ['/r2@c2/-/blob/f2?L3:3'],
                 id: 'goToDefinition.preloaded',
                 title: 'Go to definition',
             },
@@ -588,7 +556,7 @@ describe('registerHoverContributions()', () => {
         const FIND_REFERENCES_ACTION: ActionItemAction = {
             action: {
                 command: 'open',
-                commandArguments: ['/r@v/-/blob/f#L2:2&tab=references'],
+                commandArguments: ['/r@v/-/blob/f?L2:2#tab=references'],
                 id: 'findReferences',
                 title: 'Find references',
             },
@@ -646,7 +614,7 @@ describe('registerHoverContributions()', () => {
                 getHoverActionItems(
                     {
                         'goToDefinition.showLoading': false,
-                        'goToDefinition.url': '/r2@c2/-/blob/f2#L3:3',
+                        'goToDefinition.url': '/r2@c2/-/blob/f2?L3:3',
                         'goToDefinition.notFound': false,
                         'goToDefinition.error': false,
                         'findReferences.url': null,
@@ -661,10 +629,10 @@ describe('registerHoverContributions()', () => {
                 getHoverActionItems(
                     {
                         'goToDefinition.showLoading': false,
-                        'goToDefinition.url': '/r2@c2/-/blob/f2#L3:3',
+                        'goToDefinition.url': '/r2@c2/-/blob/f2?L3:3',
                         'goToDefinition.notFound': false,
                         'goToDefinition.error': false,
-                        'findReferences.url': '/r@v/-/blob/f#L2:2&tab=references',
+                        'findReferences.url': '/r@v/-/blob/f?L2:2#tab=references',
                         hoverPosition: FIXTURE_PARAMS,
                     },
                     extensionHostAPI
@@ -679,7 +647,7 @@ describe('registerHoverContributions()', () => {
                         'goToDefinition.url': null,
                         'goToDefinition.notFound': false,
                         'goToDefinition.error': false,
-                        'findReferences.url': '/r@v/-/blob/f#L2:2&tab=references',
+                        'findReferences.url': '/r@v/-/blob/f?L2:2#tab=references',
                         hoverPosition: FIXTURE_PARAMS,
                     },
                     extensionHostAPI
@@ -694,7 +662,7 @@ describe('registerHoverContributions()', () => {
                         'goToDefinition.url': null,
                         'goToDefinition.notFound': false,
                         'goToDefinition.error': true,
-                        'findReferences.url': '/r@v/-/blob/f#L2:2&tab=references',
+                        'findReferences.url': '/r@v/-/blob/f?L2:2#tab=references',
                         hoverPosition: FIXTURE_PARAMS,
                     },
                     extensionHostAPI
@@ -709,7 +677,7 @@ describe('registerHoverContributions()', () => {
                         'goToDefinition.url': null,
                         'goToDefinition.notFound': true,
                         'goToDefinition.error': false,
-                        'findReferences.url': '/r@v/-/blob/f#L2:2&tab=references',
+                        'findReferences.url': '/r@v/-/blob/f?L2:2#tab=references',
                         hoverPosition: FIXTURE_PARAMS,
                     },
                     extensionHostAPI
@@ -742,7 +710,7 @@ describe('registerHoverContributions()', () => {
             await exposedToClient.executeCommand({ command: 'goToDefinition', args: [JSON.stringify(FIXTURE_PARAMS)] })
             sinon.assert.notCalled(locationAssign)
             expect(history).toHaveLength(2)
-            expect(createPath(history.location)).toBe('/r2@c2/-/blob/f2#L3:3')
+            expect(createPath(history.location)).toBe('/r2@c2/-/blob/f2?L3:3')
 
             definitionSubscription.unsubscribe()
         })
@@ -760,7 +728,7 @@ describe('registerHoverContributions()', () => {
 
             await exposedToClient.executeCommand({ command: 'goToDefinition', args: [JSON.stringify(FIXTURE_PARAMS)] })
             sinon.assert.calledOnce(locationAssign)
-            sinon.assert.calledWith(locationAssign, 'https://sourcegraph.test/r@c/-/blob/f#L2:2&tab=def')
+            sinon.assert.calledWith(locationAssign, 'https://sourcegraph.test/r@c/-/blob/f?L2:2#tab=def')
             expect(history).toHaveLength(1)
 
             definitionSubscription.unsubscribe()
@@ -772,7 +740,7 @@ describe('registerHoverContributions()', () => {
                     of([FIXTURE_LOCATION, { ...FIXTURE_LOCATION, uri: new URL('git://r3?v3#f3') }]),
             })
 
-            history.push('/r@c/-/blob/f#L2:2&tab=def')
+            history.push('/r@c/-/blob/f?L2:2#tab=def')
             await expect(
                 exposedToClient.executeCommand({ command: 'goToDefinition', args: [JSON.stringify(FIXTURE_PARAMS)] })
             ).rejects.toMatchObject({ message: 'Multiple definitions shown in panel below.' })
@@ -785,7 +753,7 @@ describe('registerHoverContributions()', () => {
                 provideDefinition: () => of([FIXTURE_LOCATION]),
             })
 
-            history.push('/r2@c2/-/blob/f2#L3:3')
+            history.push('/r2@c2/-/blob/f2?L3:3')
             await expect(
                 exposedToClient.executeCommand({ command: 'goToDefinition', args: [JSON.stringify(FIXTURE_PARAMS)] })
             ).rejects.toMatchObject({ message: 'Already at the definition.' })

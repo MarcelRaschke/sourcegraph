@@ -17,12 +17,12 @@ Enterprise, GitLab, Phabricator, and Bitbucket Server.
 </p>
 
 <p>
-  <a target="_blank" href="https://storage.googleapis.com/sourcegraph-for-firefox/latest.xpi" style="display:flex;align-items:center">
+  <a target="_blank" href="https://addons.mozilla.org/en-US/firefox/addon/sourcegraph-for-firefox/" style="display:flex;align-items:center">
   <img src="img/firefox.svg" width="24" height="24" style="margin-right:5px" /> <strong>Install Sourcegraph for Firefox</strong>
   </a>
 </p>
 
->NOTE: The Firefox extension may need to be manually enabled from `about:addons`, you can find more information in [Firefox add-on security](firefox_security.md).
+>NOTE: If you were using our self-hosted version of Firefox Extension and are looking to upgrade, please check our [migration guide](migrating_firefox_extension.md).
 
 <video class="theme-dark-only" width="1760" height="1060" autoplay loop muted playsinline style="width: 100%; height: auto; max-width: 50rem">
   <source src="https://storage.googleapis.com/sourcegraph-assets/code-host-integration/CodeIntelligenceOnCodeHostDark.webm" type="video/webm">
@@ -140,19 +140,20 @@ If that still doesn't work, viewing the console and network activity of the exte
 
 If you are still experiencing issues, the next step is to inspect the browser extension console output and network activity, often revealing subtle configuration errors.
 
-In Chrome:
 ![Chrome extension console and network activity](https://sourcegraphstatic.com/ChromeExtensionConsoleNetworkActivity.gif)
 
-1) Right click the Sourcegraph browser extension icon
-2) Select Manage Extensions
-3) Under Inspect Views select background page, this will open a dev console to the extension background page
-4) In the developer console select the network tab
+In Chrome:
+
+1. Right click the Sourcegraph browser extension icon
+2. Select Manage Extensions
+3. Under Inspect Views select background page, this will open a dev console to the extension background page
+4. In the developer console select the network tab
 
 In Safari:
 
-1) Ensure you have access to the develop tab by selecting Safari > Preferences > Advanced, at the bottom of the preference UI check the box labelled `Show Develop menu in menu bar`
-2 ) In Develop select Web Extension Background Pages > Sourcegraph
-3) Select the Network tab
+1. Ensure you have access to the develop tab by selecting Safari > Preferences > Advanced, at the bottom of the preference UI check the box labelled `Show Develop menu in menu bar`
+2. In Develop select Web Extension Background Pages > Sourcegraph
+3. Select the Network tab
 
 If that still doesn't help, take a screenshot of the console and network activity and attach it [to a new issue](https://github.com/sourcegraph/sourcegraph/issues/new?assignees=&labels=&template=bug_report.md&title=Browser%20extension%20-%20) so we can investigate further.
 

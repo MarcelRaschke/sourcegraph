@@ -1,79 +1,38 @@
 import classNames from 'classnames'
-import React, { useCallback, useEffect } from 'react'
+import React from 'react'
 
 import { ActionsNavItems, ActionsNavItemsProps } from '@sourcegraph/shared/src/actions/ActionsNavItems'
 import {
     CommandListPopoverButton,
     CommandListPopoverButtonProps,
 } from '@sourcegraph/shared/src/commandPalette/CommandList'
-import { HoverOverlay, HoverOverlayProps } from '@sourcegraph/shared/src/hover/HoverOverlay'
-import { isErrorLike } from '@sourcegraph/shared/src/util/errors'
-import { useLocalStorage } from '@sourcegraph/shared/src/util/useLocalStorage'
-
-import { HoverThresholdProps } from '../repo/RepoContainer'
+import { useRedesignToggle } from '@sourcegraph/shared/src/util/useRedesignToggle'
 
 // Components from shared with web-styling class names applied
+export { WebHoverOverlay } from './WebHoverOverlay'
 
-export const WebHoverOverlay: React.FunctionComponent<HoverOverlayProps & HoverThresholdProps> = props => {
-    const [dismissedAlerts, setDismissedAlerts] = useLocalStorage<string[]>('WebHoverOverlay.dismissedAlerts', [])
-    const onAlertDismissed = useCallback(
-        (alertType: string) => {
-            if (!dismissedAlerts.includes(alertType)) {
-                setDismissedAlerts([...dismissedAlerts, alertType])
-            }
-        },
-        [dismissedAlerts, setDismissedAlerts]
-    )
-
-    let propsToUse = props
-    if (props.hoverOrError && props.hoverOrError !== 'loading' && !isErrorLike(props.hoverOrError)) {
-        const filteredAlerts = (props.hoverOrError?.alerts || []).filter(
-            alert => !alert.type || !dismissedAlerts.includes(alert.type)
-        )
-        propsToUse = { ...props, hoverOrError: { ...props.hoverOrError, alerts: filteredAlerts } }
-    }
-
-    const { hoverOrError } = propsToUse
-    const { onHoverShown, hoveredToken } = props
-
-    /** Whether the hover has actual content (that provides value to the user) */
-    const hoverHasValue = hoverOrError !== 'loading' && !isErrorLike(hoverOrError) && !!hoverOrError?.contents?.length
-
-    useEffect(() => {
-        if (hoverHasValue) {
-            onHoverShown?.()
-        }
-    }, [hoveredToken?.filePath, hoveredToken?.line, hoveredToken?.character, onHoverShown, hoverHasValue])
+export const WebCommandListPopoverButton: React.FunctionComponent<CommandListPopoverButtonProps> = props => {
+    const [isRedesignEnabled] = useRedesignToggle()
 
     return (
-        <HoverOverlay
-            {...propsToUse}
-            className="card"
-            iconClassName="icon-inline"
-            iconButtonClassName="btn btn-icon"
-            actionItemClassName="btn btn-secondary"
-            infoAlertClassName="alert alert-secondary" // #18931
-            errorAlertClassName="alert alert-danger"
-            onAlertDismissed={onAlertDismissed}
+        <CommandListPopoverButton
+            {...props}
+            buttonClassName="btn btn-link"
+            popoverClassName={classNames('popover', isRedesignEnabled && 'border-0')}
+            popoverInnerClassName="rounded overflow-hidden"
+            formClassName={classNames('form', isRedesignEnabled && 'p-2 bg-1 border-bottom')}
+            inputClassName="form-control px-2 py-1"
+            listClassName={classNames('list-group list-group-flush list-unstyled', isRedesignEnabled && 'pt-1')}
+            actionItemClassName={classNames(
+                'list-group-item list-group-item-action',
+                isRedesignEnabled ? 'p-2 border-0' : 'px-2'
+            )}
+            selectedActionItemClassName="active border-primary"
+            noResultsClassName="list-group-item text-muted"
         />
     )
 }
-WebHoverOverlay.displayName = 'WebHoverOverlay'
 
-export const WebCommandListPopoverButton: React.FunctionComponent<CommandListPopoverButtonProps> = props => (
-    <CommandListPopoverButton
-        {...props}
-        buttonClassName="btn btn-link"
-        popoverClassName="popover"
-        popoverInnerClassName="border rounded overflow-hidden"
-        formClassName="form"
-        inputClassName="form-control px-2 py-1 rounded-0"
-        listClassName="list-group list-group-flush list-unstyled"
-        actionItemClassName="list-group-item list-group-item-action px-2"
-        selectedActionItemClassName="active border-primary"
-        noResultsClassName="list-group-item text-muted"
-    />
-)
 WebCommandListPopoverButton.displayName = 'WebCommandListPopoverButton'
 
 export const WebActionsNavItems: React.FunctionComponent<ActionsNavItemsProps> = ({
@@ -88,7 +47,7 @@ export const WebActionsNavItems: React.FunctionComponent<ActionsNavItemsProps> =
         listClass={classNames(listClass, 'nav')}
         listItemClass={classNames(listItemClass, 'nav-item')}
         actionItemClass={classNames(actionItemClass, 'nav-link')}
-        actionItemIconClass={classNames(actionItemIconClass, 'icon-inline')}
+        actionItemIconClass={classNames(actionItemIconClass, 'icon-inline-md')}
     />
 )
 WebActionsNavItems.displayName = 'WebActionsNavItems'

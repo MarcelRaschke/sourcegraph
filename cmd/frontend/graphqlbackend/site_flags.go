@@ -8,6 +8,7 @@ import (
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/backend"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/database"
+	"github.com/sourcegraph/sourcegraph/internal/database/dbutil"
 )
 
 func (r *siteResolver) NeedsRepositoryConfiguration(ctx context.Context) (bool, error) {
@@ -17,15 +18,15 @@ func (r *siteResolver) NeedsRepositoryConfiguration(ctx context.Context) (bool, 
 
 	// 🚨 SECURITY: The site alerts may contain sensitive data, so only site
 	// admins may view them.
-	if err := backend.CheckCurrentUserIsSiteAdmin(ctx); err != nil {
+	if err := backend.CheckCurrentUserIsSiteAdmin(ctx, r.db); err != nil {
 		// TODO(dax): This should return err once the site flags query is fixed for users
 		return false, nil
 	}
 
-	return needsRepositoryConfiguration(ctx)
+	return needsRepositoryConfiguration(ctx, r.db)
 }
 
-func needsRepositoryConfiguration(ctx context.Context) (bool, error) {
+func needsRepositoryConfiguration(ctx context.Context, db dbutil.DB) (bool, error) {
 	kinds := make([]string, 0, len(database.ExternalServiceKinds))
 	for kind, config := range database.ExternalServiceKinds {
 		if config.CodeHost {
@@ -33,7 +34,7 @@ func needsRepositoryConfiguration(ctx context.Context) (bool, error) {
 		}
 	}
 
-	count, err := database.GlobalExternalServices.Count(ctx, database.ExternalServicesListOptions{
+	count, err := database.ExternalServices(db).Count(ctx, database.ExternalServicesListOptions{
 		Kinds: kinds,
 	})
 	if err != nil {
@@ -62,7 +63,7 @@ func (r *siteResolver) FreeUsersExceeded(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 
-	userCount, err := database.GlobalUsers.Count(ctx, nil)
+	userCount, err := database.Users(r.db).Count(ctx, nil)
 	if err != nil {
 		return false, err
 	}

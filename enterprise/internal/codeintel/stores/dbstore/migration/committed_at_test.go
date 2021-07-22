@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/google/go-cmp/cmp"
 	"github.com/keegancsmith/sqlf"
 
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/stores/dbstore"
 	"github.com/sourcegraph/sourcegraph/internal/database/basestore"
-	"github.com/sourcegraph/sourcegraph/internal/database/dbconn"
 	"github.com/sourcegraph/sourcegraph/internal/database/dbtesting"
-	basegitserver "github.com/sourcegraph/sourcegraph/internal/gitserver"
+	"github.com/sourcegraph/sourcegraph/internal/gitserver"
 	"github.com/sourcegraph/sourcegraph/internal/observation"
 	"github.com/sourcegraph/sourcegraph/internal/vcs"
 )
@@ -22,8 +22,8 @@ func TestCommittedAtMigrator(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	dbtesting.SetupGlobalTestDB(t)
-	store := dbstore.NewWithDB(dbconn.Global, &observation.TestContext)
+	db := dbtesting.GetDB(t)
+	store := dbstore.NewWithDB(db, &observation.TestContext)
 	gitserverClient := NewMockGitserverClient()
 	migrator := NewCommittedAtMigrator(store, gitserverClient, 250)
 
@@ -39,7 +39,7 @@ func TestCommittedAtMigrator(t *testing.T) {
 			return expectedCommitDates[i], nil
 		}
 
-		return time.Time{}, fmt.Errorf("too many calls")
+		return time.Time{}, errors.Errorf("too many calls")
 	})
 
 	assertProgress := func(expectedProgress float64) {
@@ -70,13 +70,17 @@ func TestCommittedAtMigrator(t *testing.T) {
 		}
 	}
 
+	if err := store.Exec(context.Background(), sqlf.Sprintf("INSERT INTO repo (id, name) VALUES (42, 'foo'), (43, 'bar')")); err != nil {
+		t.Fatalf("unexpected error inserting repo: %s", err)
+	}
+
 	for i := 0; i < n; i++ {
 		if err := store.Exec(context.Background(), sqlf.Sprintf(
 			"INSERT INTO lsif_uploads (repository_id, commit, state, indexer, num_parts, uploaded_parts) VALUES (%s, %s, 'completed', 'lsif-go', 0, '{}')",
 			42+i/(n/2), // 50% id=42, 50% id=43
 			fmt.Sprintf("%040d", i),
 		)); err != nil {
-			t.Fatalf("unexpected error inserting row: %s", err)
+			t.Fatalf("unexpected error inserting upload: %s", err)
 		}
 	}
 
@@ -111,8 +115,8 @@ func TestCommittedAtMigratorUnknownRepository(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	dbtesting.SetupGlobalTestDB(t)
-	store := dbstore.NewWithDB(dbconn.Global, &observation.TestContext)
+	db := dbtesting.GetDB(t)
+	store := dbstore.NewWithDB(db, &observation.TestContext)
 	gitserverClient := NewMockGitserverClient()
 	migrator := NewCommittedAtMigrator(store, gitserverClient, 250)
 
@@ -138,7 +142,7 @@ func TestCommittedAtMigratorUnknownRepository(t *testing.T) {
 			return allDates[i], nil
 		}
 
-		return time.Time{}, fmt.Errorf("too many calls")
+		return time.Time{}, errors.Errorf("too many calls")
 	})
 
 	assertProgress := func(expectedProgress float64) {
@@ -169,13 +173,17 @@ func TestCommittedAtMigratorUnknownRepository(t *testing.T) {
 		}
 	}
 
+	if err := store.Exec(context.Background(), sqlf.Sprintf("INSERT INTO repo (id, name) VALUES (42, 'foo'), (43, 'bar')")); err != nil {
+		t.Fatalf("unexpected error inserting repo: %s", err)
+	}
+
 	for i := 0; i < n; i++ {
 		if err := store.Exec(context.Background(), sqlf.Sprintf(
 			"INSERT INTO lsif_uploads (repository_id, commit, state, indexer, num_parts, uploaded_parts) VALUES (%s, %s, 'completed', 'lsif-go', 0, '{}')",
 			42+i/(n/2), // 50% id=42, 50% id=43
 			fmt.Sprintf("%040d", i),
 		)); err != nil {
-			t.Fatalf("unexpected error inserting row: %s", err)
+			t.Fatalf("unexpected error inserting upload: %s", err)
 		}
 	}
 
@@ -210,8 +218,8 @@ func TestCommittedAtMigratorUnknownCommits(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	dbtesting.SetupGlobalTestDB(t)
-	store := dbstore.NewWithDB(dbconn.Global, &observation.TestContext)
+	db := dbtesting.GetDB(t)
+	store := dbstore.NewWithDB(db, &observation.TestContext)
 	gitserverClient := NewMockGitserverClient()
 	migrator := NewCommittedAtMigrator(store, gitserverClient, 250)
 
@@ -231,13 +239,13 @@ func TestCommittedAtMigratorUnknownCommits(t *testing.T) {
 	gitserverClient.CommitDateFunc.SetDefaultHook(func(ctx context.Context, repositoryID int, commit string) (time.Time, error) {
 		if i := len(gitserverClient.CommitDateFunc.History()); i < n {
 			if i%3 == 0 {
-				return time.Time{}, &basegitserver.RevisionNotFoundError{}
+				return time.Time{}, &gitserver.RevisionNotFoundError{}
 			}
 
 			return allDates[i], nil
 		}
 
-		return time.Time{}, fmt.Errorf("too many calls")
+		return time.Time{}, errors.Errorf("too many calls")
 	})
 
 	assertProgress := func(expectedProgress float64) {
@@ -268,13 +276,17 @@ func TestCommittedAtMigratorUnknownCommits(t *testing.T) {
 		}
 	}
 
+	if err := store.Exec(context.Background(), sqlf.Sprintf("INSERT INTO repo (id, name) VALUES (42, 'foo'), (43, 'bar')")); err != nil {
+		t.Fatalf("unexpected error inserting repo: %s", err)
+	}
+
 	for i := 0; i < n; i++ {
 		if err := store.Exec(context.Background(), sqlf.Sprintf(
 			"INSERT INTO lsif_uploads (repository_id, commit, state, indexer, num_parts, uploaded_parts) VALUES (%s, %s, 'completed', 'lsif-go', 0, '{}')",
 			42+i/(n/2), // 50% id=42, 50% id=43
 			fmt.Sprintf("%040d", i),
 		)); err != nil {
-			t.Fatalf("unexpected error inserting row: %s", err)
+			t.Fatalf("unexpected error inserting upload: %s", err)
 		}
 	}
 
@@ -284,15 +296,14 @@ func TestCommittedAtMigratorUnknownCommits(t *testing.T) {
 		t.Fatalf("unexpected error performing up migration: %s", err)
 	}
 	assertProgress(0.5)
-	assertDirty([]int{42})
 	assertCommitDates(expectedCommitDates[:n/3]) // (2/3*n)/2 = n/3
 
 	if err := migrator.Up(context.Background()); err != nil {
 		t.Fatalf("unexpected error performing up migration: %s", err)
 	}
 	assertProgress(1)
-	assertDirty([]int{42, 43})
 	assertCommitDates(expectedCommitDates)
+	assertDirty([]int{42, 43})
 
 	if err := migrator.Down(context.Background()); err != nil {
 		t.Fatalf("unexpected error performing down migration: %s", err)

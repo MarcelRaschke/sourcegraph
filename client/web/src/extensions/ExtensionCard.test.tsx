@@ -4,10 +4,19 @@ import renderer from 'react-test-renderer'
 
 import { PlatformContext } from '@sourcegraph/shared/src/platform/context'
 
+import { AuthenticatedUser } from '../auth'
+
 import { ExtensionCard } from './ExtensionCard'
 
 describe('ExtensionCard', () => {
     const NOOP_PLATFORM_CONTEXT: PlatformContext = {} as any
+
+    const mockUser = {
+        id: 'userID',
+        username: 'username',
+        email: 'user@me.com',
+        siteAdmin: true,
+    } as AuthenticatedUser
 
     test('renders', () => {
         expect(
@@ -32,11 +41,26 @@ describe('ExtensionCard', () => {
                                 },
                             }}
                             subject={{ id: 'u', viewerCanAdminister: false }}
+                            viewerSubject={{
+                                __typename: 'User',
+                                username: 'u',
+                                displayName: 'u',
+                                id: 'u',
+                                viewerCanAdminister: false,
+                            }}
+                            siteSubject={{
+                                __typename: 'Site',
+                                id: 's',
+                                viewerCanAdminister: true,
+                                allowSiteSettingsEdits: true,
+                            }}
                             settingsCascade={{ final: null, subjects: null }}
                             platformContext={NOOP_PLATFORM_CONTEXT}
                             enabled={false}
+                            enabledForAllUsers={false}
                             isLightTheme={false}
                             settingsURL="/settings/foobar"
+                            authenticatedUser={mockUser}
                         />
                     </MemoryRouter>
                 )

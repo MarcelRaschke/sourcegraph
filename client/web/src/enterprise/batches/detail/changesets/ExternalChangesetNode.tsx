@@ -1,6 +1,5 @@
 import classNames from 'classnames'
 import * as H from 'history'
-import AlertCircleIcon from 'mdi-react/AlertCircleIcon'
 import ChevronDownIcon from 'mdi-react/ChevronDownIcon'
 import ChevronRightIcon from 'mdi-react/ChevronRightIcon'
 import SyncIcon from 'mdi-react/SyncIcon'
@@ -16,7 +15,7 @@ import { asError, isErrorLike } from '@sourcegraph/shared/src/util/errors'
 import { RepoSpec, RevisionSpec, FileSpec, ResolvedRevisionSpec } from '@sourcegraph/shared/src/util/url'
 
 import { ErrorAlert, ErrorMessage } from '../../../../components/alerts'
-import { DiffStat } from '../../../../components/diff/DiffStat'
+import { DiffStatStack } from '../../../../components/diff/DiffStat'
 import { ChangesetSpecType, ExternalChangesetFields } from '../../../../graphql-operations'
 import {
     queryExternalChangesetWithFileDiffs as _queryExternalChangesetWithFileDiffs,
@@ -29,13 +28,15 @@ import { ChangesetReviewStatusCell } from './ChangesetReviewStatusCell'
 import { ChangesetStatusCell } from './ChangesetStatusCell'
 import { DownloadDiffButton } from './DownloadDiffButton'
 import { ExternalChangesetInfoCell } from './ExternalChangesetInfoCell'
+import styles from './ExternalChangesetNode.module.scss'
 
 export interface ExternalChangesetNodeProps extends ThemeProps {
     node: ExternalChangesetFields
     viewerCanAdminister: boolean
-    enableSelect?: boolean
-    onSelect?: (id: string, selected: boolean) => void
-    isSelected?: (id: string) => boolean
+    selectable?: {
+        onSelect: (id: string, selected: boolean) => void
+        isSelected: (id: string) => boolean
+    }
     history: H.History
     location: H.Location
     extensionInfo?: {
@@ -50,9 +51,7 @@ export interface ExternalChangesetNodeProps extends ThemeProps {
 export const ExternalChangesetNode: React.FunctionComponent<ExternalChangesetNodeProps> = ({
     node: initialNode,
     viewerCanAdminister,
-    enableSelect,
-    onSelect,
-    isSelected,
+    selectable,
     isLightTheme,
     history,
     location,
@@ -73,12 +72,10 @@ export const ExternalChangesetNode: React.FunctionComponent<ExternalChangesetNod
         [isExpanded]
     )
 
-    const selected = isSelected?.(node.id)
+    const selected = selectable?.isSelected(node.id)
     const toggleSelected = useCallback((): void => {
-        if (onSelect !== undefined) {
-            onSelect(node.id, !selected)
-        }
-    }, [onSelect, selected, node.id])
+        selectable?.onSelect(node.id, !selected)
+    }, [selectable, selected, node.id])
 
     return (
         <>
@@ -94,7 +91,7 @@ export const ExternalChangesetNode: React.FunctionComponent<ExternalChangesetNod
                     <ChevronRightIcon className="icon-inline" aria-label="Expand section" />
                 )}
             </button>
-            {enableSelect && (
+            {selectable ? (
                 <div className="p-2">
                     <input
                         id={`select-changeset-${node.id}`}
@@ -103,29 +100,37 @@ export const ExternalChangesetNode: React.FunctionComponent<ExternalChangesetNod
                         checked={selected}
                         onChange={toggleSelected}
                         disabled={!viewerCanAdminister}
-                        data-tooltip="Click to select changeset for detaching from batch change"
+                        data-tooltip="Click to select changeset for bulk operation"
                     />
                 </div>
+            ) : (
+                // 0-width empty element to allow us to keep the identical grid template of the parent
+                // list, regardless of whether or not the nodes have the checkbox selector
+                <span />
             )}
             <ChangesetStatusCell
                 id={node.id}
                 state={node.state}
-                className="p-2 align-self-stretch text-muted external-changeset-node__state d-block d-sm-flex"
+                className={classNames(
+                    styles.externalChangesetNodeState,
+                    'p-2 align-self-stretch text-muted d-block d-sm-flex'
+                )}
             />
             <ExternalChangesetInfoCell
                 node={node}
                 viewerCanAdminister={viewerCanAdminister}
-                className="p-2 align-self-stretch external-changeset-node__information"
+                className={classNames(styles.externalChangesetNodeInformation, 'p-2 align-self-stretch')}
             />
             <div
                 className={classNames(
-                    'd-flex d-md-none justify-content-start external-changeset-node__statuses',
+                    styles.externalChangesetNodeStatuses,
+                    'd-flex d-md-none justify-content-start',
                     (node.checkState || node.reviewState || node.diffStat) && 'p-2'
                 )}
             >
                 {node.checkState && <ChangesetCheckStatusCell checkState={node.checkState} className="mr-3" />}
                 {node.reviewState && <ChangesetReviewStatusCell reviewState={node.reviewState} className="mr-3" />}
-                {node.diffStat && <DiffStat {...node.diffStat} expandedCounts={true} separateLines={true} />}
+                {node.diffStat && <DiffStatStack {...node.diffStat} />}
             </div>
             <span
                 className={classNames(
@@ -149,14 +154,17 @@ export const ExternalChangesetNode: React.FunctionComponent<ExternalChangesetNod
                     node.diffStat && 'p-2'
                 )}
             >
-                {node.diffStat && <DiffStat {...node.diffStat} expandedCounts={true} separateLines={true} />}
+                {node.diffStat && <DiffStatStack {...node.diffStat} />}
             </div>
             {/* The button for expanding the information used on xs devices. */}
             <button
                 type="button"
                 aria-label={isExpanded ? 'Collapse section' : 'Expand section'}
                 onClick={toggleIsExpanded}
-                className="external-changeset-node__show-details btn btn-outline-secondary d-block d-sm-none test-batches-expand-changeset"
+                className={classNames(
+                    styles.externalChangesetNodeShowDetails,
+                    'btn btn-outline-secondary d-block d-sm-none test-batches-expand-changeset'
+                )}
             >
                 {isExpanded ? (
                     <ChevronDownIcon className="icon-inline" aria-label="Close section" />
@@ -167,8 +175,14 @@ export const ExternalChangesetNode: React.FunctionComponent<ExternalChangesetNod
             </button>
             {isExpanded && (
                 <>
-                    <div className="external-changeset-node__bg-expanded align-self-stretch" />
-                    <div className="external-changeset-node__expanded-section external-changeset-node__bg-expanded p-2">
+                    <div className={classNames(styles.externalChangesetNodeBgExpanded, 'align-self-stretch')} />
+                    <div
+                        className={classNames(
+                            styles.externalChangesetNodeExpandedSection,
+                            styles.externalChangesetNodeBgExpanded,
+                            'p-2'
+                        )}
+                    >
                         <div className="d-flex justify-content-end">
                             {viewerCanAdminister && node.state === ChangesetState.FAILED && node.error && (
                                 <RetryChangesetButton
@@ -203,10 +217,7 @@ export const ExternalChangesetNode: React.FunctionComponent<ExternalChangesetNod
 
 const SyncerError: React.FunctionComponent<{ syncerError: string }> = ({ syncerError }) => (
     <div className="alert alert-danger" role="alert">
-        <h4 className="alert-heading">
-            <AlertCircleIcon className="icon icon-inline" /> Encountered error during last attempt to sync changeset
-            data from code host
-        </h4>
+        <h4 className="alert-heading">Encountered error during last attempt to sync changeset data from code host</h4>
         <ErrorMessage error={syncerError} />
         <hr className="my-2" />
         <p className="mb-0">
@@ -224,9 +235,7 @@ const ChangesetError: React.FunctionComponent<{
 
     return (
         <div className="alert alert-danger" role="alert">
-            <h4 className="alert-heading">
-                <AlertCircleIcon className="icon icon-inline" /> Failed to run operations on changeset
-            </h4>
+            <h4 className="alert-heading">Failed to run operations on changeset</h4>
             <ErrorMessage error={node.error} />
         </div>
     )
@@ -258,7 +267,7 @@ const RetryChangesetButton: React.FunctionComponent<{
                 <SyncIcon
                     className={classNames(
                         'icon-inline',
-                        isLoading === true && 'external-changeset-node__retry--spinning'
+                        isLoading === true && styles.externalChangesetNodeRetrySpinning
                     )}
                 />{' '}
                 Retry

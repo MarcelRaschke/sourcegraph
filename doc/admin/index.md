@@ -12,7 +12,7 @@ Site administrators are the admins responsible for deploying, managing, and conf
 - [Back up or migrate to a new Sourcegraph instance](install/migrate-backup.md)
 
 ## Management, deployment, and configuration
-
+- [Best Practices](deployment_best_practices.md)
 - [Configuration](config/index.md)
 - [Adding Git repositories](repo/add.md) (from a code host or clone URL)
 - [HTTP and HTTPS/SSL configuration](http_https_configuration.md)
@@ -20,10 +20,13 @@ Site administrators are the admins responsible for deploying, managing, and conf
 - [Monorepo](monorepo.md)
 - [Repository webhooks](repo/webhooks.md)
 - [User authentication](auth/index.md)
+- [Deploying workers](workers.md)
 - [Upgrading Sourcegraph](updates.md)
+- [Migrations](migrations.md)
 - [Setting the URL for your instance](url.md)
 - [Observability](observability.md)
 - [Repository permissions](repo/permissions.md)
+  - [Row-level security](repo/row_level_security.md)
 - [PostgreSQL configuration](postgres-conf.md)
 - [Upgrading PostgreSQL](postgres.md)
 - [Using external services (PostgreSQL, Redis, S3/GCS)](external_services/index.md)
@@ -57,3 +60,16 @@ Site administrators are the admins responsible for deploying, managing, and conf
 - [Migrating to Sourcegraph 3.7.2+](migration/3_7.md)
 - [Pricing and subscriptions](subscriptions/index.md)
 - [FAQ](faq.md)
+
+## [How-tos](how-to/index.md)
+
+- [How to troubleshoot a dirty database](how-to/dirty_database.md)
+- [How to enable or disable an experimental feature](how-to/enable-experimental-feature.md)
+- [How to diagnose an `Unknown Error` during login to your Sourcegraph instance](how-to/unknown-error-login.md)
+- [How to convert version contexts to search contexts](how-to/converting-version-contexts-to-search-contexts.md)
+- [How to troubleshoot pod evictions](how-to/troubleshoot-pod-eviction.md)
+- [How to monitor your Sourcegraph instance](how-to/monitoring-guide.md)
+- [How to troubleshoot a Sourcegraph extension](how-to/troubleshoot-sg-extension.md)
+- [How to troubleshoot a repository that is not being updated](how-to/repo-not-updated.md)
+- [How to configure submodules](how-to/submodule-configuration.md)
+- [How to setup HTTPS connection with Ingress controller](how-to/setup-https.md)

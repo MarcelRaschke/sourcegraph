@@ -3,16 +3,16 @@ package graphqlbackend
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"strconv"
 
+	"github.com/cockroachdb/errors"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/sourcegraph/jsonx"
 
 	"github.com/sourcegraph/sourcegraph/internal/actor"
 	"github.com/sourcegraph/sourcegraph/internal/conf"
 	"github.com/sourcegraph/sourcegraph/internal/database"
+	"github.com/sourcegraph/sourcegraph/internal/database/dbutil"
 )
 
 // Deprecated: The GraphQL type Configuration is deprecated.
@@ -38,6 +38,7 @@ type settingsMutationGroupInput struct {
 }
 
 type settingsMutation struct {
+	db      dbutil.DB
 	input   *settingsMutationGroupInput
 	subject *settingsSubject
 }
@@ -68,6 +69,7 @@ func (r *schemaResolver) SettingsMutation(ctx context.Context, args *struct {
 	}
 
 	return &settingsMutation{
+		db:      r.db,
 		input:   args.Input,
 		subject: subject,
 	}, nil
@@ -99,7 +101,7 @@ func toKeyPath(gqlKeyPath []*keyPathSegment) (jsonx.Path, error) {
 	keyPath := make(jsonx.Path, len(gqlKeyPath))
 	for i, s := range gqlKeyPath {
 		if (s.Property == nil) == (s.Index == nil) {
-			return nil, fmt.Errorf("invalid key path segment at index %d: exactly 1 of property and index must be non-null", i)
+			return nil, errors.Errorf("invalid key path segment at index %d: exactly 1 of property and index must be non-null", i)
 		}
 
 		var segment jsonx.Segment
@@ -162,7 +164,7 @@ func (r *settingsMutation) editSettings(ctx context.Context, keyPath jsonx.Path,
 func (r *settingsMutation) OverwriteSettings(ctx context.Context, args *struct {
 	Contents string
 }) (*updateSettingsPayload, error) {
-	_, err := settingsCreateIfUpToDate(ctx, r.subject, r.input.LastID, actor.FromContext(ctx).UID, args.Contents)
+	_, err := settingsCreateIfUpToDate(ctx, r.db, r.subject, r.input.LastID, actor.FromContext(ctx).UID, args.Contents)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +188,7 @@ func (r *settingsMutation) doUpdateSettings(ctx context.Context, computeEdits fu
 	}
 
 	// Write mutated settings.
-	updatedSettings, err := settingsCreateIfUpToDate(ctx, r.subject, r.input.LastID, actor.FromContext(ctx).UID, newSettings)
+	updatedSettings, err := settingsCreateIfUpToDate(ctx, r.db, r.subject, r.input.LastID, actor.FromContext(ctx).UID, newSettings)
 	if err != nil {
 		return 0, err
 	}
@@ -195,7 +197,7 @@ func (r *settingsMutation) doUpdateSettings(ctx context.Context, computeEdits fu
 
 func (r *settingsMutation) getCurrentSettings(ctx context.Context) (string, error) {
 	// Get the settings file whose contents to mutate.
-	settings, err := database.GlobalSettings.GetLatest(ctx, r.subject.toSubject())
+	settings, err := database.Settings(r.db).GetLatest(ctx, r.subject.toSubject())
 	if err != nil {
 		return "", err
 	}
@@ -215,7 +217,7 @@ func (r *settingsMutation) getCurrentSettings(ctx context.Context) (string, erro
 		if settings != nil {
 			lastID = &settings.ID
 		}
-		return "", fmt.Errorf("update settings version mismatch: last ID is %s (mutation wanted %s)", intOrNull(lastID), intOrNull(r.input.LastID))
+		return "", errors.Errorf("update settings version mismatch: last ID is %s (mutation wanted %s)", intOrNull(lastID), intOrNull(r.input.LastID))
 	}
 
 	return data, nil

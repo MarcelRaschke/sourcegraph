@@ -2,9 +2,9 @@ package goroutine
 
 import (
 	"context"
-	"errors"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/derision-test/glock"
 	"github.com/inconshreveable/log15"
 
@@ -75,12 +75,14 @@ func (h *simpleHandler) HandleError(err error) {
 	log15.Error("An error occurred in a background task", "handler", h.name, "error", err)
 }
 
-// NewPeriodicGoroutine creates a new PeriodicGoroutine with the given handler.
+// NewPeriodicGoroutine creates a new PeriodicGoroutine with the given handler. The context provided will propagate into
+// the executing goroutine and will terminate the goroutine if cancelled.
 func NewPeriodicGoroutine(ctx context.Context, interval time.Duration, handler Handler) *PeriodicGoroutine {
 	return NewPeriodicGoroutineWithMetrics(ctx, interval, handler, nil)
 }
 
-// NewPeriodicGoroutine creates a new PeriodicGoroutine with the given handler.
+// NewPeriodicGoroutineWithMetrics creates a new PeriodicGoroutine with the given handler. The context provided will propagate into
+// the executing goroutine and will terminate the goroutine if cancelled.
 func NewPeriodicGoroutineWithMetrics(ctx context.Context, interval time.Duration, handler Handler, operation *observation.Operation) *PeriodicGoroutine {
 	return newPeriodicGoroutine(ctx, interval, handler, operation, glock.NewRealClock())
 }
@@ -140,10 +142,10 @@ func runPeriodicHandler(ctx context.Context, handler Handler, operation *observa
 	}
 
 	err = handler.Handle(ctx)
-
-	// If the error is due to the loop being shut down, just break
-	for ex := err; ex != nil; ex = errors.Unwrap(ex) {
-		if err == ctx.Err() {
+	if err != nil {
+		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
+			// If the error is due to the loop being shut down, break
+			// from the run loop in the calling function
 			return true, nil
 		}
 	}

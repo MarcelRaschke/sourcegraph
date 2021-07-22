@@ -32,11 +32,15 @@ type TestChangesetOpts struct {
 	DiffStatChanged int32
 	DiffStatDeleted int32
 
-	PublicationState btypes.ChangesetPublicationState
+	PublicationState   btypes.ChangesetPublicationState
+	UiPublicationState *btypes.ChangesetUiPublicationState
 
 	ReconcilerState btypes.ReconcilerState
 	FailureMessage  string
 	NumFailures     int64
+	NumResets       int64
+
+	SyncErrorMessage string
 
 	OwnedByBatchChange int64
 
@@ -85,7 +89,8 @@ func BuildChangeset(opts TestChangesetOpts) *btypes.Changeset {
 		ExternalReviewState: opts.ExternalReviewState,
 		ExternalCheckState:  opts.ExternalCheckState,
 
-		PublicationState: opts.PublicationState,
+		PublicationState:   opts.PublicationState,
+		UiPublicationState: opts.UiPublicationState,
 
 		OwnedByBatchChangeID: opts.OwnedByBatchChange,
 
@@ -93,8 +98,13 @@ func BuildChangeset(opts TestChangesetOpts) *btypes.Changeset {
 
 		ReconcilerState: opts.ReconcilerState,
 		NumFailures:     opts.NumFailures,
+		NumResets:       opts.NumResets,
 
 		Metadata: opts.Metadata,
+	}
+
+	if opts.SyncErrorMessage != "" {
+		changeset.SyncErrorMessage = &opts.SyncErrorMessage
 	}
 
 	if opts.ExternalBranch != "" {
@@ -127,6 +137,7 @@ type ChangesetAssertions struct {
 	OwnedByBatchChange int64
 	ReconcilerState    btypes.ReconcilerState
 	PublicationState   btypes.ChangesetPublicationState
+	UiPublicationState *btypes.ChangesetUiPublicationState
 	ExternalState      btypes.ChangesetExternalState
 	ExternalID         string
 	ExternalBranch     string
@@ -177,6 +188,10 @@ func AssertChangeset(t *testing.T, c *btypes.Changeset, a ChangesetAssertions) {
 
 	if have, want := c.PublicationState, a.PublicationState; have != want {
 		t.Fatalf("changeset PublicationState wrong. want=%s, have=%s", want, have)
+	}
+
+	if diff := cmp.Diff(c.UiPublicationState, a.UiPublicationState); diff != "" {
+		t.Fatalf("changeset UiPublicationState wrong. (-have +want):\n%s", diff)
 	}
 
 	if have, want := c.ExternalState, a.ExternalState; have != want {

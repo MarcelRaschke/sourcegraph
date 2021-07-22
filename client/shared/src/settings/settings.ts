@@ -21,6 +21,7 @@ export interface Settings {
     extensions?: { [extensionID: string]: boolean }
     experimentalFeatures?: {
         enableFastResultLoading?: boolean
+        acceptSearchSuggestionOnEnter?: boolean
     }
     [key: string]: any
 
@@ -32,18 +33,25 @@ export interface Settings {
     final?: never
 }
 
+export type SettingsSubjectCommonFields = Pick<GQL.ISettingsSubject, 'id' | 'viewerCanAdminister'>
+
+export type SettingsClientSubject = Pick<IClient, '__typename' | 'displayName'> & SettingsSubjectCommonFields
+export type SettingsUserSubject = Pick<GQL.IUser, '__typename' | 'username' | 'displayName'> &
+    SettingsSubjectCommonFields
+export type SettingsOrgSubject = Pick<GQL.IOrg, '__typename' | 'name' | 'displayName'> & SettingsSubjectCommonFields
+export type SettingsSiteSubject = Pick<GQL.ISite, '__typename' | 'allowSiteSettingsEdits'> & SettingsSubjectCommonFields
+export type SettingsDefaultSubject = Pick<GQL.IDefaultSettings, '__typename'> & SettingsSubjectCommonFields
+
 /**
  * A settings subject is something that can have settings associated with it, such as a site ("global
  * settings"), an organization ("organization settings"), a user ("user settings"), etc.
  */
-export type SettingsSubject = Pick<GQL.ISettingsSubject, 'id' | 'viewerCanAdminister'> &
-    (
-        | Pick<IClient, '__typename' | 'displayName'>
-        | Pick<GQL.IUser, '__typename' | 'username' | 'displayName'>
-        | Pick<GQL.IOrg, '__typename' | 'name' | 'displayName'>
-        | Pick<GQL.ISite, '__typename'>
-        | Pick<GQL.IDefaultSettings, '__typename'>
-    )
+export type SettingsSubject =
+    | SettingsClientSubject
+    | SettingsUserSubject
+    | SettingsOrgSubject
+    | SettingsSiteSubject
+    | SettingsDefaultSubject
 
 /**
  * A cascade of settings from multiple subjects, from lowest precedence to highest precedence, and the final
@@ -189,6 +197,8 @@ export function mergeSettings<S extends Settings>(values: S[]): S | null {
         'search.scopes': (base: any, add: any) => [...base, ...add],
         'search.savedQueries': (base: any, add: any) => [...base, ...add],
         'search.repositoryGroups': (base: any, add: any) => ({ ...base, ...add }),
+        'insights.dashboards': (base: any, add: any) => ({ ...base, ...add }),
+        'insights.allrepos': (base: any, add: any) => ({ ...base, ...add }),
         quicklinks: (base: any, add: any) => [...base, ...add],
     }
     const target = cloneDeep(values[0])

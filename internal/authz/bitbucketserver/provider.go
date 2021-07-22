@@ -4,12 +4,11 @@ package bitbucketserver
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	otlog "github.com/opentracing/opentracing-go/log"
-	"github.com/pkg/errors"
 
 	"github.com/sourcegraph/sourcegraph/internal/authz"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc"
@@ -135,7 +134,7 @@ func (p *Provider) FetchUserPerms(ctx context.Context, account *extsvc.Account) 
 	case account.Data == nil:
 		return nil, errors.New("no account data provided")
 	case !extsvc.IsHostOfAccount(p.codeHost, account):
-		return nil, fmt.Errorf("not a code host of the account: want %q but have %q",
+		return nil, errors.Errorf("not a code host of the account: want %q but have %q",
 			p.codeHost.ServiceID, account.AccountSpec.ServiceID)
 	}
 
@@ -156,6 +155,12 @@ func (p *Provider) FetchUserPerms(ctx context.Context, account *extsvc.Account) 
 	}, err
 }
 
+// FetchUserPermsByToken is currently only required for syncing permissions for
+// GitHub and GitLab on sourcegraph.com
+func (p *Provider) FetchUserPermsByToken(ctx context.Context, token string) (*authz.ExternalUserPermissions, error) {
+	return nil, errors.New("not implemented")
+}
+
 // FetchRepoPerms returns a list of user IDs (on code host) who have read access to
 // the given repo on the code host. The user ID has the same value as it would
 // be used as extsvc.Account.AccountID. The returned list includes both direct access
@@ -170,7 +175,7 @@ func (p *Provider) FetchRepoPerms(ctx context.Context, repo *extsvc.Repository) 
 	case repo == nil:
 		return nil, errors.New("no repo provided")
 	case !extsvc.IsHostOfRepo(p.codeHost, &repo.ExternalRepoSpec):
-		return nil, fmt.Errorf("not a code host of the repo: want %q but have %q",
+		return nil, errors.Errorf("not a code host of the repo: want %q but have %q",
 			p.codeHost.ServiceID, repo.ServiceID)
 	}
 

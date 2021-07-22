@@ -53,6 +53,7 @@ type LSIFUploadResolver interface {
 	FinishedAt() *DateTime
 	InputIndexer() string
 	PlaceInQueue() *int32
+	AssociatedIndex(ctx context.Context) (LSIFIndexResolver, error)
 	ProjectRoot(ctx context.Context) (*GitTreeEntryResolver, error)
 }
 
@@ -86,6 +87,7 @@ type LSIFIndexResolver interface {
 	FinishedAt() *DateTime
 	Steps() IndexStepsResolver
 	PlaceInQueue() *int32
+	AssociatedUpload(ctx context.Context) (LSIFUploadResolver, error)
 	ProjectRoot(ctx context.Context) (*GitTreeEntryResolver, error)
 }
 
@@ -110,15 +112,6 @@ type IndexStepResolver interface {
 	LogEntry() ExecutionLogEntryResolver
 }
 
-type ExecutionLogEntryResolver interface {
-	Key() string
-	Command() []string
-	StartTime() DateTime
-	ExitCode() int32
-	Out(ctx context.Context) (string, error)
-	DurationMilliseconds() int32
-}
-
 type LSIFIndexConnectionResolver interface {
 	Nodes(ctx context.Context) ([]LSIFIndexResolver, error)
 	TotalCount(ctx context.Context) (*int32, error)
@@ -140,6 +133,8 @@ type QueueAutoIndexJobArgs struct {
 
 type GitTreeLSIFDataResolver interface {
 	Diagnostics(ctx context.Context, args *LSIFDiagnosticsArgs) (DiagnosticConnectionResolver, error)
+	DocumentationPage(ctx context.Context, args *LSIFDocumentationPageArgs) (DocumentationPageResolver, error)
+	DocumentationPathInfo(ctx context.Context, args *LSIFDocumentationPathInfoArgs) (JSONValue, error)
 }
 
 type CodeIntelligenceCommitGraphResolver interface {
@@ -156,6 +151,9 @@ type GitBlobLSIFDataResolver interface {
 	Definitions(ctx context.Context, args *LSIFQueryPositionArgs) (LocationConnectionResolver, error)
 	References(ctx context.Context, args *LSIFPagedQueryPositionArgs) (LocationConnectionResolver, error)
 	Hover(ctx context.Context, args *LSIFQueryPositionArgs) (HoverResolver, error)
+	Documentation(ctx context.Context, args *LSIFQueryPositionArgs) (DocumentationResolver, error)
+	DocumentationDefinitions(ctx context.Context, args *LSIFQueryDocumentationArgs) (LocationConnectionResolver, error)
+	DocumentationReferences(ctx context.Context, args *LSIFPagedQueryDocumentationArgs) (LocationConnectionResolver, error)
 }
 
 type GitBlobLSIFDataArgs struct {
@@ -182,6 +180,16 @@ type LSIFPagedQueryPositionArgs struct {
 	After *string
 }
 
+type LSIFQueryDocumentationArgs struct {
+	PathID string
+}
+
+type LSIFPagedQueryDocumentationArgs struct {
+	PathID string
+	graphqlutil.ConnectionArgs
+	After *string
+}
+
 type LSIFDiagnosticsArgs struct {
 	graphqlutil.ConnectionArgs
 }
@@ -195,6 +203,7 @@ type CodeIntelligenceRangeResolver interface {
 	Definitions(ctx context.Context) (LocationConnectionResolver, error)
 	References(ctx context.Context) (LocationConnectionResolver, error)
 	Hover(ctx context.Context) (HoverResolver, error)
+	Documentation(ctx context.Context) (DocumentationResolver, error)
 }
 
 type LocationConnectionResolver interface {
@@ -205,6 +214,10 @@ type LocationConnectionResolver interface {
 type HoverResolver interface {
 	Markdown() Markdown
 	Range() RangeResolver
+}
+
+type DocumentationResolver interface {
+	PathID() string
 }
 
 type DiagnosticConnectionResolver interface {

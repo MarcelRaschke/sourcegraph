@@ -5,15 +5,14 @@ import (
 	"context"
 	"database/sql"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/cockroachdb/errors"
 	"github.com/google/go-cmp/cmp"
-	"github.com/pkg/errors"
 
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/batches/store"
 	ct "github.com/sourcegraph/sourcegraph/enterprise/internal/batches/testing"
@@ -480,7 +479,7 @@ func testGitLabWebhook(db *sql.DB, userID int32) func(*testing.T) {
 			// We can induce an error with a broken database connection.
 			s := gitLabTestSetup(t, db)
 			h := NewGitLabWebhook(s)
-			h.Store = store.NewWithClock(&brokenDB{errors.New("foo")}, s.Clock())
+			h.Store = store.NewWithClock(&brokenDB{errors.New("foo")}, nil, s.Clock())
 
 			es, err := h.getExternalServiceFromRawID(ctx, "12345")
 			if es != nil {
@@ -540,7 +539,7 @@ func testGitLabWebhook(db *sql.DB, userID int32) func(*testing.T) {
 				}
 
 				// We can induce an error with a broken database connection.
-				h.Store = store.NewWithClock(&brokenDB{errors.New("foo")}, s.Clock())
+				h.Store = store.NewWithClock(&brokenDB{errors.New("foo")}, nil, s.Clock())
 
 				err := h.handleEvent(ctx, es, event)
 				if err == nil {
@@ -560,7 +559,7 @@ func testGitLabWebhook(db *sql.DB, userID int32) func(*testing.T) {
 				}
 
 				// We can induce an error with a broken database connection.
-				h.Store = store.NewWithClock(&brokenDB{errors.New("foo")}, s.Clock())
+				h.Store = store.NewWithClock(&brokenDB{errors.New("foo")}, nil, s.Clock())
 
 				err := h.handleEvent(ctx, es, event)
 				if err == nil {
@@ -670,7 +669,7 @@ func testGitLabWebhook(db *sql.DB, userID int32) func(*testing.T) {
 			// Again, we're going to set up a poisoned store database that will
 			// error if a transaction is started.
 			s := gitLabTestSetup(t, db)
-			store := store.NewWithClock(&noNestingTx{s.DB()}, s.Clock())
+			store := store.NewWithClock(&noNestingTx{s.DB()}, nil, s.Clock())
 			h := NewGitLabWebhook(store)
 
 			t.Run("missing merge request", func(t *testing.T) {
@@ -834,14 +833,14 @@ func gitLabTestSetup(t *testing.T, db *sql.DB) *store.Store {
 
 	// Note that tx is wrapped in nestedTx to effectively neuter further use of
 	// transactions within the test.
-	return store.NewWithClock(&nestedTx{tx}, c.Now)
+	return store.NewWithClock(&nestedTx{tx}, nil, c.Now)
 }
 
 // assertBodyIncludes checks for a specific substring within the given response
 // body, and generates a test error if the substring is not found. This is
 // mostly useful to look for wrapped errors in the output.
 func assertBodyIncludes(t *testing.T, r io.Reader, want string) {
-	body, err := ioutil.ReadAll(r)
+	body, err := io.ReadAll(r)
 	if err != nil {
 		t.Fatal(err)
 	}

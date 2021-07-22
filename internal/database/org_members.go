@@ -3,23 +3,19 @@ package database
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
-	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/jackc/pgconn"
 	"github.com/keegancsmith/sqlf"
 
 	"github.com/sourcegraph/sourcegraph/internal/database/basestore"
-	"github.com/sourcegraph/sourcegraph/internal/database/dbconn"
 	"github.com/sourcegraph/sourcegraph/internal/database/dbutil"
 	"github.com/sourcegraph/sourcegraph/internal/types"
 )
 
 type OrgMemberStore struct {
 	*basestore.Store
-
-	once sync.Once
 }
 
 // OrgMembers instantiates and returns a new OrgMemberStore with prepared statements.
@@ -41,20 +37,7 @@ func (m *OrgMemberStore) Transact(ctx context.Context) (*OrgMemberStore, error) 
 	return &OrgMemberStore{Store: txBase}, err
 }
 
-// ensureStore instantiates a basestore.Store if necessary, using the dbconn.Global handle.
-// This function ensures access to dbconn happens after the rest of the code or tests have
-// initialized it.
-func (m *OrgMemberStore) ensureStore() {
-	m.once.Do(func() {
-		if m.Store == nil {
-			m.Store = basestore.NewWithDB(dbconn.Global, sql.TxOptions{})
-		}
-	})
-}
-
 func (m *OrgMemberStore) Create(ctx context.Context, orgID, userID int32) (*types.OrgMembership, error) {
-	m.ensureStore()
-
 	om := types.OrgMembership{
 		OrgID:  orgID,
 		UserID: userID,
@@ -64,10 +47,9 @@ func (m *OrgMemberStore) Create(ctx context.Context, orgID, userID int32) (*type
 		"INSERT INTO org_members(org_id, user_id) VALUES($1, $2) RETURNING id, created_at, updated_at",
 		om.OrgID, om.UserID).Scan(&om.ID, &om.CreatedAt, &om.UpdatedAt)
 	if err != nil {
-		if pgErr, ok := err.(*pgconn.PgError); ok {
-			if pgErr.ConstraintName == "org_members_org_id_user_id_key" {
-				return nil, errors.New("user is already a member of the organization")
-			}
+		var e *pgconn.PgError
+		if errors.As(err, &e) && e.ConstraintName == "org_members_org_id_user_id_key" {
+			return nil, errors.New("user is already a member of the organization")
 		}
 		return nil, err
 	}
@@ -86,8 +68,6 @@ func (m *OrgMemberStore) GetByOrgIDAndUserID(ctx context.Context, orgID, userID 
 }
 
 func (m *OrgMemberStore) Remove(ctx context.Context, orgID, userID int32) error {
-	m.ensureStore()
-
 	_, err := m.Handle().DB().ExecContext(ctx, "DELETE FROM org_members WHERE (org_id=$1 AND user_id=$2)", orgID, userID)
 	return err
 }
@@ -125,8 +105,6 @@ func (m *OrgMemberStore) getOneBySQL(ctx context.Context, query string, args ...
 }
 
 func (m *OrgMemberStore) getBySQL(ctx context.Context, query string, args ...interface{}) ([]*types.OrgMembership, error) {
-	m.ensureStore()
-
 	rows, err := m.Handle().DB().QueryContext(ctx, "SELECT org_members.id, org_members.org_id, org_members.user_id, org_members.created_at, org_members.updated_at FROM org_members "+query, args...)
 	if err != nil {
 		return nil, err
@@ -154,8 +132,6 @@ func (m *OrgMemberStore) CreateMembershipInOrgsForAllUsers(ctx context.Context, 
 	if len(orgNames) == 0 {
 		return nil
 	}
-
-	m.ensureStore()
 
 	orgNameVars := []*sqlf.Query{}
 	for _, orgName := range orgNames {

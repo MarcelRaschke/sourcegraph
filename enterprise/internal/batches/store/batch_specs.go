@@ -3,11 +3,9 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 
-	"github.com/dineshappavoo/basex"
+	"github.com/cockroachdb/errors"
 	"github.com/keegancsmith/sqlf"
-	"github.com/pkg/errors"
 
 	btypes "github.com/sourcegraph/sourcegraph/enterprise/internal/batches/types"
 	"github.com/sourcegraph/sourcegraph/internal/database/dbutil"
@@ -72,7 +70,7 @@ func (s *Store) createBatchSpecQuery(c *btypes.BatchSpec) (*sqlf.Query, error) {
 	}
 
 	if c.RandID == "" {
-		if c.RandID, err = basex.Encode(strconv.Itoa(seededRand.Int())); err != nil {
+		if c.RandID, err = RandomID(); err != nil {
 			return nil, errors.Wrap(err, "creating RandID failed")
 		}
 	}

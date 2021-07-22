@@ -54,7 +54,7 @@ var stateHTMLTemplate string
 
 // EnterpriseInit is a function that allows enterprise code to be triggered when dependencies
 // created in Main are ready for use.
-type EnterpriseInit func(db *sql.DB, store *repos.Store, cf *httpcli.Factory, server *repoupdater.Server) []debugserver.Dumper
+type EnterpriseInit func(db *sql.DB, store *repos.Store, keyring keyring.Ring, cf *httpcli.Factory, server *repoupdater.Server) []debugserver.Dumper
 
 func Main(enterpriseInit EnterpriseInit) {
 	// NOTE: Internal actor is required to have full visibility of the repo table
@@ -108,15 +108,17 @@ func Main(enterpriseInit EnterpriseInit) {
 	clock := func() time.Time { return time.Now().UTC() }
 
 	// Syncing relies on access to frontend and git-server, so wait until they started up.
+	log15.Info("waiting for frontend")
 	if err := api.InternalClient.WaitForFrontend(ctx); err != nil {
 		log.Fatalf("sourcegraph-frontend not reachable: %v", err)
 	}
-	log15.Debug("detected frontend ready")
+	log15.Info("detected frontend ready")
 
+	log15.Info("waiting for gitservers")
 	if err := gitserver.DefaultClient.WaitForGitServers(ctx); err != nil {
 		log.Fatalf("gitservers not reachable: %v", err)
 	}
-	log15.Debug("detected gitservers ready")
+	log15.Info("detected gitservers ready")
 
 	dsn := conf.Get().ServiceConnections.PostgresDSN
 	conf.Watch(func() {
@@ -134,7 +136,7 @@ func Main(enterpriseInit EnterpriseInit) {
 		log.Fatalf("error initialising encryption keyring: %v", err)
 	}
 
-	db, err := dbconn.New(dsn, "repo-updater")
+	db, err := dbconn.New(dbconn.Opts{DSN: dsn, DBName: "frontend", AppName: "repo-updater"})
 	if err != nil {
 		log.Fatalf("failed to initialize database store: %v", err)
 	}
@@ -144,7 +146,7 @@ func Main(enterpriseInit EnterpriseInit) {
 	// be exposing. We have a bit more to do in this method, though, and the
 	// process will be marked ready further down this function.
 
-	repos.MustRegisterMetrics(db)
+	repos.MustRegisterMetrics(db, envvar.SourcegraphDotComMode())
 
 	store := repos.NewStore(db, sql.TxOptions{Isolation: sql.LevelDefault})
 	{
@@ -182,7 +184,7 @@ func Main(enterpriseInit EnterpriseInit) {
 	// All dependencies ready
 	var debugDumpers []debugserver.Dumper
 	if enterpriseInit != nil {
-		debugDumpers = enterpriseInit(db, store, cf, server)
+		debugDumpers = enterpriseInit(db, store, keyring.Default(), cf, server)
 	}
 
 	if envvar.SourcegraphDotComMode() {
@@ -193,9 +195,12 @@ func Main(enterpriseInit EnterpriseInit) {
 			// cloud_default flag has been set.
 			NoNamespace:      true,
 			OnlyCloudDefault: true,
-			Kinds:            []string{extsvc.KindGitHub, extsvc.KindGitLab},
+			Kinds: []string{
+				extsvc.KindGitHub,
+				extsvc.KindGitLab,
+				extsvc.KindJVMPackages,
+			},
 		})
-
 		if err != nil {
 			log.Fatalf("failed to list external services: %v", err)
 		}
@@ -215,6 +220,8 @@ func Main(enterpriseInit EnterpriseInit) {
 				if strings.HasPrefix(c.Url, "https://gitlab.com") && c.Token != "" {
 					server.GitLabDotComSource, err = repos.NewGitLabSource(e, cf)
 				}
+			case *schema.JVMPackagesConnection:
+				server.JVMPackagesSource, err = repos.NewJVMPackagesSource(e)
 			}
 
 			if err != nil {
@@ -245,12 +252,11 @@ func Main(enterpriseInit EnterpriseInit) {
 	var gps *repos.GitolitePhabricatorMetadataSyncer
 	if !envvar.SourcegraphDotComMode() {
 		gps = repos.NewGitolitePhabricatorMetadataSyncer(store)
-		syncer.SubsetSynced = make(chan repos.Diff)
 	}
 
 	go watchSyncer(ctx, syncer, scheduler, gps)
 	go func() {
-		log.Fatal(syncer.Run(ctx, db, store, repos.RunOptions{
+		log.Fatal(syncer.Run(ctx, store, repos.RunOptions{
 			EnqueueInterval: repos.ConfRepoListUpdateInterval,
 			IsCloud:         envvar.SourcegraphDotComMode(),
 			MinSyncInterval: repos.ConfRepoListUpdateInterval,
@@ -403,10 +409,13 @@ type scheduler interface {
 	// UpdateFromDiff updates the scheduled and queued repos from the given sync diff.
 	UpdateFromDiff(repos.Diff)
 
-	// SetCloned ensures uncloned repos are given priority in the scheduler.
-	SetCloned([]string)
+	// PrioritiseUncloned ensures uncloned repos are given priority in the scheduler.
+	PrioritiseUncloned([]string)
 
-	// EnsureScheduled ensures that all the repos provided are known to the scheduler
+	// ListRepos lists all the repos managed by the scheduler.
+	ListRepos() []string
+
+	// EnsureScheduled ensures that all the repos provided are known to the scheduler.
 	EnsureScheduled([]types.RepoName)
 }
 
@@ -429,11 +438,6 @@ func watchSyncer(ctx context.Context, syncer *repos.Syncer, sched scheduler, gps
 					log15.Error("GitolitePhabricatorMetadataSyncer", "error", err)
 				}
 			}()
-
-		case diff := <-syncer.SubsetSynced:
-			if !conf.Get().DisableAutoGitUpdates {
-				sched.UpdateFromDiff(diff)
-			}
 		}
 	}
 }
@@ -450,27 +454,35 @@ func syncScheduler(ctx context.Context, sched scheduler, gitserverClient *gitser
 			return
 		}
 
-		// Fetch all default repos that are NOT cloned so that we can add them to the
+		// Fetch ALL indexable repos that are NOT cloned so that we can add them to the
 		// scheduler
-		if u, err := baseRepoStore.ListDefaultRepos(ctx, database.ListDefaultReposOptions{OnlyUncloned: true}); err != nil {
-			log15.Error("Listing default repos", "error", err)
+		opts := database.ListIndexableReposOptions{
+			OnlyUncloned:   true,
+			IncludePrivate: true,
+		}
+		if u, err := baseRepoStore.ListIndexableRepos(ctx, opts); err != nil {
+			log15.Error("Listing indexable repos", "error", err)
 			return
 		} else {
-			// Ensure that uncloned repos are known to the scheduler
+			// Ensure that uncloned indexable repos are known to the scheduler
 			sched.EnsureScheduled(u)
 		}
 
-		// TODO: Now that we store sync state in the DB maybe we should query from there
-		// instead of gitserver?
-		cloned, err := gitserverClient.ListCloned(ctx)
+		// Next, move any repos managed by the scheduler that are uncloned to the front
+		// of the queue
+		managed := sched.ListRepos()
+
+		uncloned, err := baseRepoStore.ListRepoNames(ctx, database.ReposListOptions{Names: managed, NoCloned: true})
 		if err != nil {
-			log15.Warn("failed to fetch list of cloned repositories", "error", err)
+			log15.Warn("failed to fetch list of uncloned repositories", "error", err)
 			return
 		}
+		names := make([]string, len(uncloned))
+		for i := range uncloned {
+			names[i] = string(uncloned[i].Name)
+		}
 
-		// Ensure that any uncloned repos are moved to the front of the schedule
-		// TODO: Could we change this to send through only the uncloned repos?
-		sched.SetCloned(cloned)
+		sched.PrioritiseUncloned(names)
 	}
 
 	for ctx.Err() == nil {

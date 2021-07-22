@@ -5,7 +5,7 @@ import { Scalars } from '../../graphql-operations'
 import { SiteAdminAlert } from '../../site-admin/SiteAdminAlert'
 import { lazyComponent } from '../../util/lazyComponent'
 
-import { showPasswordsPage, showAccountSecurityPage, allowUserExternalServicePublic } from './cloud-ga'
+import { showPasswordsPage, showAccountSecurityPage, userExternalServicesEnabled } from './cloud-ga'
 import type { UserAddCodeHostsPageContainerProps } from './UserAddCodeHostsPageContainer'
 import { UserSettingsAreaRoute, UserSettingsAreaRouteContext } from './UserSettingsArea'
 
@@ -39,23 +39,32 @@ export const userSettingsAreaRoutes: readonly UserSettingsAreaRoute[] = [
     {
         path: '',
         exact: true,
-        render: props => (
-            <SettingsArea
-                {...props}
-                subject={props.user}
-                isLightTheme={props.isLightTheme}
-                extraHeader={
-                    <>
-                        {props.authenticatedUser && props.user.id !== props.authenticatedUser.id && (
-                            <SiteAdminAlert className="sidebar__alert">
-                                Viewing settings for <strong>{props.user.username}</strong>
-                            </SiteAdminAlert>
-                        )}
-                        <p>User settings override global and organization settings.</p>
-                    </>
-                }
-            />
-        ),
+        render: props => {
+            if (props.isSourcegraphDotCom && props.authenticatedUser && props.user.id !== props.authenticatedUser.id) {
+                return (
+                    <SiteAdminAlert className="sidebar__alert alert-danger">
+                        Only the user may access their individual settings.
+                    </SiteAdminAlert>
+                )
+            }
+            return (
+                <SettingsArea
+                    {...props}
+                    subject={props.user}
+                    isLightTheme={props.isLightTheme}
+                    extraHeader={
+                        <>
+                            {props.authenticatedUser && props.user.id !== props.authenticatedUser.id && (
+                                <SiteAdminAlert className="sidebar__alert">
+                                    Viewing settings for <strong>{props.user.username}</strong>
+                                </SiteAdminAlert>
+                            )}
+                            <p>User settings override global and organization settings.</p>
+                        </>
+                    }
+                />
+            )
+        },
     },
     {
         path: '/profile',
@@ -95,32 +104,36 @@ export const userSettingsAreaRoutes: readonly UserSettingsAreaRoute[] = [
             />
         ),
         exact: true,
-        condition: allowUserExternalServicePublic,
+        condition: userExternalServicesEnabled,
     },
     {
         path: '/repositories/manage',
         render: props => (
             <UserSettingsManageRepositoriesPage
                 {...props}
-                userID={props.user.id}
+                authenticatedUser={{
+                    id: props.authenticatedUser.id,
+                    siteAdmin: props.authenticatedUser.siteAdmin,
+                    tags: props.authenticatedUser.tags,
+                }}
                 routingPrefix={props.user.url + '/settings'}
             />
         ),
         exact: true,
-        condition: allowUserExternalServicePublic,
+        condition: userExternalServicesEnabled,
     },
     {
         path: '/code-hosts',
         render: props => (
             <UserAddCodeHostsPageContainer
-                userID={props.user.id}
+                user={{ id: props.authenticatedUser.id, tags: props.authenticatedUser.tags }}
                 context={window.context}
                 routingPrefix={props.user.url + '/settings'}
-                onUserRepositoriesUpdate={props.onUserRepositoriesUpdate}
+                onUserExternalServicesOrRepositoriesUpdate={props.onUserExternalServicesOrRepositoriesUpdate}
             />
         ),
         exact: true,
-        condition: allowUserExternalServicePublic,
+        condition: userExternalServicesEnabled,
     },
     {
         path: '/external-services/:id',
@@ -132,7 +145,7 @@ export const userSettingsAreaRoutes: readonly UserSettingsAreaRoute[] = [
             />
         ),
         exact: true,
-        condition: allowUserExternalServicePublic,
+        condition: userExternalServicesEnabled,
     },
     {
         path: '/product-research',

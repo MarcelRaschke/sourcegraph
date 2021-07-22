@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cockroachdb/errors"
+
 	btypes "github.com/sourcegraph/sourcegraph/enterprise/internal/batches/types"
 )
 
@@ -162,7 +164,7 @@ func DeterminePlan(previousSpec, currentSpec *btypes.ChangesetSpec, ch *btypes.C
 		return pl, nil
 	}
 
-	delta, err := compareChangesetSpecs(previousSpec, currentSpec)
+	delta, err := compareChangesetSpecs(previousSpec, currentSpec, ch.UiPublicationState)
 	if err != nil {
 		return pl, nil
 	}
@@ -170,15 +172,19 @@ func DeterminePlan(previousSpec, currentSpec *btypes.ChangesetSpec, ch *btypes.C
 
 	switch ch.PublicationState {
 	case btypes.ChangesetPublicationStateUnpublished:
-		if currentSpec.Spec.Published.True() {
+		calc := calculatePublicationState(currentSpec.Spec.Published, ch.UiPublicationState)
+		if calc.IsPublished() {
 			pl.SetOp(btypes.ReconcilerOperationPublish)
 			pl.AddOp(btypes.ReconcilerOperationPush)
-		} else if currentSpec.Spec.Published.Draft() && ch.SupportsDraft() {
+		} else if calc.IsDraft() && ch.SupportsDraft() {
 			// If configured to be opened as draft, and the changeset supports
 			// draft mode, publish as draft. Otherwise, take no action.
 			pl.SetOp(btypes.ReconcilerOperationPublishDraft)
 			pl.AddOp(btypes.ReconcilerOperationPush)
 		}
+		// TODO: test for Published.Nil() and then plan based on the UI
+		// publication state. For now, we'll let it fall through and treat it
+		// the same as being unpublished.
 
 	case btypes.ChangesetPublicationStatePublished:
 		// Don't take any actions for merged changesets.
@@ -189,9 +195,17 @@ func DeterminePlan(previousSpec, currentSpec *btypes.ChangesetSpec, ch *btypes.C
 			pl.SetOp(btypes.ReconcilerOperationReopen)
 		}
 
-		// Only do undraft, when the codehost supports draft changesets.
-		if delta.Undraft && btypes.ExternalServiceSupports(ch.ExternalServiceType, btypes.CodehostCapabilityDraftChangesets) {
-			pl.AddOp(btypes.ReconcilerOperationUndraft)
+		// Figure out if we need to do an undraft, assuming the code host
+		// supports draft changesets. This may be due to a new spec being
+		// applied, which would mean delta.Undraft is set, or because the UI
+		// publication state has been changed, for which we need to compare the
+		// current changeset state against the desired state.
+		if btypes.ExternalServiceSupports(ch.ExternalServiceType, btypes.CodehostCapabilityDraftChangesets) {
+			if delta.Undraft {
+				pl.AddOp(btypes.ReconcilerOperationUndraft)
+			} else if calc := calculatePublicationState(currentSpec.Spec.Published, ch.UiPublicationState); calc.IsPublished() && ch.ExternalState == btypes.ChangesetExternalStateDraft {
+				pl.AddOp(btypes.ReconcilerOperationUndraft)
+			}
 		}
 
 		if delta.AttributesChanged() {
@@ -222,7 +236,7 @@ func DeterminePlan(previousSpec, currentSpec *btypes.ChangesetSpec, ch *btypes.C
 		}
 
 	default:
-		return pl, fmt.Errorf("unknown changeset publication state: %s", ch.PublicationState)
+		return pl, errors.Errorf("unknown changeset publication state: %s", ch.PublicationState)
 	}
 
 	return pl, nil
@@ -249,7 +263,7 @@ func reopenAfterDetach(ch *btypes.Changeset) bool {
 	return ch.AttachedTo(ch.OwnedByBatchChangeID)
 }
 
-func compareChangesetSpecs(previous, current *btypes.ChangesetSpec) (*ChangesetSpecDelta, error) {
+func compareChangesetSpecs(previous, current *btypes.ChangesetSpec, uiPublicationState *btypes.ChangesetUiPublicationState) (*ChangesetSpecDelta, error) {
 	delta := &ChangesetSpecDelta{}
 
 	if previous == nil {
@@ -268,7 +282,9 @@ func compareChangesetSpecs(previous, current *btypes.ChangesetSpec) (*ChangesetS
 
 	// If was set to "draft" and now "true", need to undraft the changeset.
 	// We currently ignore going from "true" to "draft".
-	if previous.Spec.Published.Draft() && current.Spec.Published.True() {
+	previousCalc := calculatePublicationState(previous.Spec.Published, uiPublicationState)
+	currentCalc := calculatePublicationState(current.Spec.Published, uiPublicationState)
+	if previousCalc.IsDraft() && currentCalc.IsPublished() {
 		delta.Undraft = true
 	}
 

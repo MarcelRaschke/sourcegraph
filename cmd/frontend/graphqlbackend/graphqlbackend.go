@@ -3,16 +3,17 @@ package graphqlbackend
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/graph-gophers/graphql-go"
 	gqlerrors "github.com/graph-gophers/graphql-go/errors"
 	"github.com/graph-gophers/graphql-go/introspection"
+	"github.com/graph-gophers/graphql-go/relay"
 	"github.com/graph-gophers/graphql-go/trace"
 	"github.com/inconshreveable/log15"
 	"github.com/prometheus/client_golang/prometheus"
@@ -331,12 +332,12 @@ func prometheusGraphQLRequestName(requestName string) string {
 
 func NewSchema(db dbutil.DB, batchChanges BatchChangesResolver, codeIntel CodeIntelResolver, insights InsightsResolver, authz AuthzResolver, codeMonitors CodeMonitorsResolver, license LicenseResolver, dotcom DotcomRootResolver) (*graphql.Schema, error) {
 	resolver := newSchemaResolver(db)
-	schemas := []string{MainSchema}
+	schemas := []string{mainSchema}
 
 	if batchChanges != nil {
 		EnterpriseResolvers.batchChangesResolver = batchChanges
 		resolver.BatchChangesResolver = batchChanges
-		schemas = append(schemas, BatchesSchema)
+		schemas = append(schemas, batchesSchema)
 		// Register NodeByID handlers.
 		for kind, res := range batchChanges.NodeResolvers() {
 			resolver.nodeByIDFns[kind] = res
@@ -346,7 +347,7 @@ func NewSchema(db dbutil.DB, batchChanges BatchChangesResolver, codeIntel CodeIn
 	if codeIntel != nil {
 		EnterpriseResolvers.codeIntelResolver = codeIntel
 		resolver.CodeIntelResolver = codeIntel
-		schemas = append(schemas, CodeIntelSchema)
+		schemas = append(schemas, codeIntelSchema)
 		// Register NodeByID handlers.
 		for kind, res := range codeIntel.NodeResolvers() {
 			resolver.nodeByIDFns[kind] = res
@@ -356,18 +357,19 @@ func NewSchema(db dbutil.DB, batchChanges BatchChangesResolver, codeIntel CodeIn
 	if insights != nil {
 		EnterpriseResolvers.insightsResolver = insights
 		resolver.InsightsResolver = insights
-		schemas = append(schemas, InsightsSchema)
+		schemas = append(schemas, insightsSchema)
 	}
 
 	if authz != nil {
 		EnterpriseResolvers.authzResolver = authz
 		resolver.AuthzResolver = authz
+		schemas = append(schemas, authzSchema)
 	}
 
 	if codeMonitors != nil {
 		EnterpriseResolvers.codeMonitorsResolver = codeMonitors
 		resolver.CodeMonitorsResolver = codeMonitors
-		schemas = append(schemas, CodeMonitorsSchema)
+		schemas = append(schemas, codeMonitorsSchema)
 		// Register NodeByID handlers.
 		for kind, res := range codeMonitors.NodeResolvers() {
 			resolver.nodeByIDFns[kind] = res
@@ -377,14 +379,14 @@ func NewSchema(db dbutil.DB, batchChanges BatchChangesResolver, codeIntel CodeIn
 	if license != nil {
 		EnterpriseResolvers.licenseResolver = license
 		resolver.LicenseResolver = license
-		schemas = append(schemas, LicenseSchema)
+		schemas = append(schemas, licenseSchema)
 		// No NodeByID handlers currently.
 	}
 
 	if dotcom != nil {
 		EnterpriseResolvers.dotcomResolver = dotcom
 		resolver.DotcomRootResolver = dotcom
-		schemas = append(schemas, DotcomSchema)
+		schemas = append(schemas, dotcomSchema)
 		// Register NodeByID handlers.
 		for kind, res := range dotcom.NodeResolvers() {
 			resolver.nodeByIDFns[kind] = res
@@ -422,8 +424,6 @@ func newSchemaResolver(db dbutil.DB) *schemaResolver {
 	r := &schemaResolver{
 		db:                db,
 		repoupdaterClient: repoupdater.DefaultClient,
-
-		AuthzResolver: defaultAuthzResolver{},
 	}
 
 	r.nodeByIDFns = map[string]NodeByIDFunc{
@@ -483,9 +483,7 @@ var EnterpriseResolvers = struct {
 	codeMonitorsResolver CodeMonitorsResolver
 	licenseResolver      LicenseResolver
 	dotcomResolver       DotcomRootResolver
-}{
-	authzResolver: defaultAuthzResolver{},
-}
+}{}
 
 // DEPRECATED
 func (r *schemaResolver) Root() *schemaResolver {
@@ -513,6 +511,18 @@ func (r *schemaResolver) Repository(ctx context.Context, args *struct {
 		return nil, nil
 	}
 	return resolver.repo, nil
+}
+
+func (r *schemaResolver) repositoryByID(ctx context.Context, id graphql.ID) (*RepositoryResolver, error) {
+	var repoID api.RepoID
+	if err := relay.UnmarshalSpec(id, &repoID); err != nil {
+		return nil, err
+	}
+	repo, err := database.Repos(r.db).Get(ctx, repoID)
+	if err != nil {
+		return nil, err
+	}
+	return NewRepositoryResolver(r.db, repo), nil
 }
 
 type RedirectResolver struct {
@@ -547,7 +557,7 @@ func (r *schemaResolver) RepositoryRedirect(ctx context.Context, args *struct {
 	} else if args.CloneURL != nil {
 		// Query by git clone URL
 		var err error
-		name, err = cloneurls.ReposourceCloneURLToRepoName(ctx, *args.CloneURL)
+		name, err = cloneurls.ReposourceCloneURLToRepoName(ctx, r.db, *args.CloneURL)
 		if err != nil {
 			return nil, err
 		}
@@ -561,8 +571,9 @@ func (r *schemaResolver) RepositoryRedirect(ctx context.Context, args *struct {
 
 	repo, err := backend.Repos.GetByName(ctx, name)
 	if err != nil {
-		if err, ok := err.(backend.ErrRepoSeeOther); ok {
-			return &repositoryRedirect{redirect: &RedirectResolver{url: err.RedirectURL}}, nil
+		var e backend.ErrRepoSeeOther
+		if errors.As(err, &e) {
+			return &repositoryRedirect{redirect: &RedirectResolver{url: e.RedirectURL}}, nil
 		}
 		if errcode.IsNotFound(err) {
 			return nil, nil
@@ -596,13 +607,13 @@ func (r *schemaResolver) AffiliatedRepositories(ctx context.Context, args *struc
 	User     graphql.ID
 	CodeHost *graphql.ID
 	Query    *string
-}) (*codeHostRepositoryConnectionResolver, error) {
+}) (*affiliatedRepositoriesConnection, error) {
 	userID, err := UnmarshalUserID(args.User)
 	if err != nil {
 		return nil, err
 	}
-	// 🚨 SECURITY: make sure the user is either site admin or the same user being requested
-	if err := backend.CheckSiteAdminOrSameUser(ctx, userID); err != nil {
+	// 🚨 SECURITY: Make sure the user is the same user being requested
+	if err := backend.CheckSameUser(ctx, userID); err != nil {
 		return nil, err
 	}
 	var codeHost int64
@@ -617,10 +628,30 @@ func (r *schemaResolver) AffiliatedRepositories(ctx context.Context, args *struc
 		query = *args.Query
 	}
 
-	return &codeHostRepositoryConnectionResolver{
+	return &affiliatedRepositoriesConnection{
 		db:       r.db,
 		userID:   userID,
 		codeHost: codeHost,
 		query:    query,
 	}, nil
+}
+
+// CodeHostSyncDue returns true if any of the supplied code hosts are due to sync
+// now or within "seconds" from now.
+func (r *schemaResolver) CodeHostSyncDue(ctx context.Context, args *struct {
+	IDs     []graphql.ID
+	Seconds int32
+}) (bool, error) {
+	if len(args.IDs) == 0 {
+		return false, errors.New("no ids supplied")
+	}
+	ids := make([]int64, len(args.IDs))
+	for i, gqlID := range args.IDs {
+		id, err := unmarshalExternalServiceID(gqlID)
+		if err != nil {
+			return false, errors.New("unable to unmarshal id")
+		}
+		ids[i] = id
+	}
+	return database.ExternalServices(r.db).SyncDue(ctx, ids, time.Duration(args.Seconds)*time.Second)
 }

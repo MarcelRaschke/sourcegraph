@@ -16,9 +16,10 @@ import {
 } from '@sourcegraph/shared/src/util/url'
 
 import { fetchBlobContentLines } from '../../repo/backend'
-import { querySelectorOrSelf } from '../../util/dom'
+import { querySelectorAllOrSelf, querySelectorOrSelf } from '../../util/dom'
 import { CodeHost, MountGetter } from '../shared/codeHost'
 import { CodeView, toCodeViewResolver } from '../shared/codeViews'
+import { createNotificationClassNameGetter } from '../shared/getNotificationClassName'
 import { NativeTooltip } from '../shared/nativeTooltips'
 import { getSelectionsFromHash, observeSelectionsFromHash } from '../shared/util/selections'
 import { ViewResolver } from '../shared/views'
@@ -204,7 +205,31 @@ export const fileLineContainerResolver: ViewResolver<CodeView> = {
 }
 
 const genericCodeViewResolver: ViewResolver<CodeView> = {
-    selector: '.file',
+    selector: target => {
+        const codeViews = new Set<HTMLElement>()
+
+        // Logic to support large diffs that are loaded asynchronously:
+        // https://github.com/sourcegraph/sourcegraph/issues/18337
+        // - Don't return `.file` elements that have yet to be loaded (loading is triggered by user)
+        // - When the user triggers diff loading, the mutation observer will tell us about
+        // .js-blob-wrapper, since the actual '.file' has been in the DOM the whole time. Return
+        // the closest ancestor '.file'
+
+        for (const file of querySelectorAllOrSelf<HTMLElement>(target, '.file')) {
+            if (file.querySelectorAll('.js-diff-load-container').length === 0) {
+                codeViews.add(file)
+            }
+        }
+
+        for (const blobWrapper of querySelectorAllOrSelf(target, '.js-blob-wrapper')) {
+            const file = blobWrapper.closest('.file')
+            if (file instanceof HTMLElement) {
+                codeViews.add(file)
+            }
+        }
+
+        return [...codeViews]
+    },
     resolveView: (element: HTMLElement): CodeView | null => {
         if (element.querySelector('article.markdown-body')) {
             // This code view is rendered markdown, we shouldn't add code intelligence
@@ -285,6 +310,14 @@ const nativeTooltipResolver: ViewResolver<NativeTooltip> = {
 
 const iconClassName = 'icon--github v-align-text-bottom'
 
+const notificationClassNames = {
+    [NotificationType.Log]: 'flash',
+    [NotificationType.Success]: 'flash flash-success',
+    [NotificationType.Info]: 'flash',
+    [NotificationType.Warning]: 'flash flash-warn',
+    [NotificationType.Error]: 'flash flash-error',
+}
+
 export const githubCodeHost: CodeHost = {
     type: 'github',
     name: checkIsGitHubEnterprise() ? 'GitHub Enterprise' : 'GitHub',
@@ -325,13 +358,7 @@ export const githubCodeHost: CodeHost = {
     },
     check: checkIsGitHub,
     getCommandPaletteMount,
-    notificationClassNames: {
-        [NotificationType.Log]: 'flash',
-        [NotificationType.Success]: 'flash flash-success',
-        [NotificationType.Info]: 'flash',
-        [NotificationType.Warning]: 'flash flash-warn',
-        [NotificationType.Error]: 'flash flash-error',
-    },
+    notificationClassNames,
     commandPaletteClassProps: {
         buttonClassName: 'Header-link',
         popoverClassName: 'Box',
@@ -357,9 +384,9 @@ export const githubCodeHost: CodeHost = {
         className: 'Box',
         actionItemClassName: 'btn btn-secondary',
         actionItemPressedClassName: 'active',
-        iconButtonClassName: 'btn-octicon p-0',
-        infoAlertClassName: 'flash flash-full',
-        errorAlertClassName: 'flash flash-full flash-error',
+        closeButtonClassName: 'btn-octicon p-0',
+        badgeClassName: 'label',
+        getAlertClassName: createNotificationClassNameGetter(notificationClassNames, 'flash-full'),
         iconClassName,
     },
     setElementTooltip,

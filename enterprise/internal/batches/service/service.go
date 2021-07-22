@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/backend"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend"
@@ -262,7 +262,7 @@ func (s *Service) MoveBatchChange(ctx context.Context, opts MoveBatchChangeOpts)
 	}
 
 	// 🚨 SECURITY: Only the Author of the batch change can move it.
-	if err := backend.CheckSiteAdminOrSameUser(ctx, batchChange.InitialApplierID); err != nil {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, s.store.DB(), batchChange.InitialApplierID); err != nil {
 		return nil, err
 	}
 	// Check if current user has access to target namespace if set.
@@ -306,7 +306,7 @@ func (s *Service) CloseBatchChange(ctx context.Context, id int64, closeChangeset
 		return batchChange, nil
 	}
 
-	if err := backend.CheckSiteAdminOrSameUser(ctx, batchChange.InitialApplierID); err != nil {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, s.store.DB(), batchChange.InitialApplierID); err != nil {
 		return nil, err
 	}
 
@@ -352,7 +352,7 @@ func (s *Service) DeleteBatchChange(ctx context.Context, id int64) (err error) {
 		return err
 	}
 
-	if err := backend.CheckSiteAdminOrSameUser(ctx, batchChange.InitialApplierID); err != nil {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, s.store.DB(), batchChange.InitialApplierID); err != nil {
 		return err
 	}
 
@@ -394,7 +394,7 @@ func (s *Service) EnqueueChangesetSync(ctx context.Context, id int64) (err error
 	)
 
 	for _, c := range batchChanges {
-		err := backend.CheckSiteAdminOrSameUser(ctx, c.InitialApplierID)
+		err := backend.CheckSiteAdminOrSameUser(ctx, s.store.DB(), c.InitialApplierID)
 		if err != nil {
 			authErr = err
 		} else {
@@ -449,7 +449,7 @@ func (s *Service) ReenqueueChangeset(ctx context.Context, id int64) (changeset *
 	)
 
 	for _, c := range attachedBatchChanges {
-		err := backend.CheckSiteAdminOrSameUser(ctx, c.InitialApplierID)
+		err := backend.CheckSiteAdminOrSameUser(ctx, s.store.DB(), c.InitialApplierID)
 		if err != nil {
 			authErr = err
 		} else {
@@ -462,13 +462,7 @@ func (s *Service) ReenqueueChangeset(ctx context.Context, id int64) (changeset *
 		return nil, nil, authErr
 	}
 
-	if changeset.ReconcilerState != btypes.ReconcilerStateFailed {
-		return nil, nil, errors.New("cannot re-enqueue changeset not in failed state")
-	}
-
-	changeset.ResetReconcilerState(global.DefaultReconcilerEnqueueState())
-
-	if err = s.store.UpdateChangeset(ctx, changeset); err != nil {
+	if err := s.store.EnqueueChangeset(ctx, changeset, global.DefaultReconcilerEnqueueState(), btypes.ReconcilerStateFailed); err != nil {
 		return nil, nil, err
 	}
 
@@ -485,9 +479,9 @@ func (s *Service) ReenqueueChangeset(ctx context.Context, id int64) (changeset *
 // If both values are zero, an error is returned.
 func checkNamespaceAccess(ctx context.Context, db dbutil.DB, namespaceUserID, namespaceOrgID int32) error {
 	if namespaceOrgID != 0 {
-		return backend.CheckOrgAccess(ctx, db, namespaceOrgID)
+		return backend.CheckOrgAccessOrSiteAdmin(ctx, db, namespaceOrgID)
 	} else if namespaceUserID != 0 {
-		return backend.CheckSiteAdminOrSameUser(ctx, namespaceUserID)
+		return backend.CheckSiteAdminOrSameUser(ctx, db, namespaceUserID)
 	} else {
 		return ErrNoNamespace
 	}
@@ -566,73 +560,78 @@ func (s *Service) ValidateAuthenticator(ctx context.Context, externalServiceID, 
 	return nil
 }
 
-// ErrChangesetsToDetachNotFound can be returned by (*Service).DetachChangesets
+// ErrChangesetsForJobNotFound can be returned by (*Service).CreateChangesetJobs
 // if the number of changesets returned from the database doesn't match the
-// number if IDs passed in.
-var ErrChangesetsToDetachNotFound = errors.New("some changesets that should be detached could not be found")
+// number if IDs passed in. That can happen if some of the changesets are not
+// published.
+var ErrChangesetsForJobNotFound = errors.New("some changesets could not be found")
 
-// DetachChangesets detaches the given Changeset from the given BatchChange
-// by checking whether the actor in the context has permission to enqueue a
-// reconciler run and then enqueues it by calling ResetReconcilerState.
-func (s *Service) DetachChangesets(ctx context.Context, batchChangeID int64, ids []int64) (err error) {
-	traceTitle := fmt.Sprintf("batchChangeID: %d, changeset: %d", batchChangeID, ids)
-	tr, ctx := trace.New(ctx, "service.DetachChangesets", traceTitle)
+// CreateChangesetJobs creates one changeset job for each given Changeset in the
+// given BatchChange, checking whether the actor in the context has permission to
+// trigger a job, and enqueues it.
+func (s *Service) CreateChangesetJobs(ctx context.Context, batchChangeID int64, ids []int64, jobType btypes.ChangesetJobType, payload interface{}, listOpts store.ListChangesetsOpts) (bulkGroupID string, err error) {
+	traceTitle := fmt.Sprintf("batchChangeID: %d, len(changesets): %d", batchChangeID, len(ids))
+	tr, ctx := trace.New(ctx, "service.CreateChangesetJobs", traceTitle)
 	defer func() {
 		tr.SetError(err)
 		tr.Finish()
 	}()
 
-	// Load the BatchChange to check for admin rights.
+	// Load the BatchChange to check for write permissions.
 	batchChange, err := s.store.GetBatchChange(ctx, store.GetBatchChangeOpts{ID: batchChangeID})
 	if err != nil {
-		return err
+		return bulkGroupID, errors.Wrap(err, "loading batch change")
 	}
 
-	// 🚨 SECURITY: Only the Author of the batch change can detach changesets.
-	if err := backend.CheckSiteAdminOrSameUser(ctx, batchChange.InitialApplierID); err != nil {
-		return err
+	// 🚨 SECURITY: Only the author of the batch change can create jobs.
+	if err := backend.CheckSiteAdminOrSameUser(ctx, s.store.DB(), batchChange.InitialApplierID); err != nil {
+		return bulkGroupID, err
 	}
 
-	cs, _, err := s.store.ListChangesets(ctx, store.ListChangesetsOpts{
-		IDs:           ids,
-		BatchChangeID: batchChangeID,
-		OnlyArchived:  true,
-		// We only want to detach the changesets the user has access to
-		EnforceAuthz: true,
-	})
+	// Construct list options.
+	opts := listOpts
+	opts.IDs = ids
+	opts.BatchChangeID = batchChangeID
+	// We only want to allow changesets the user has access to.
+	opts.EnforceAuthz = true
+	cs, _, err := s.store.ListChangesets(ctx, opts)
 	if err != nil {
-		return err
+		return bulkGroupID, errors.Wrap(err, "listing changesets")
 	}
 
 	if len(cs) != len(ids) {
-		return ErrChangesetsToDetachNotFound
+		return bulkGroupID, ErrChangesetsForJobNotFound
+	}
+
+	bulkGroupID, err = store.RandomID()
+	if err != nil {
+		return bulkGroupID, errors.Wrap(err, "creating bulkGroupID failed")
 	}
 
 	tx, err := s.store.Transact(ctx)
 	if err != nil {
-		return err
+		return bulkGroupID, errors.Wrap(err, "starting transaction")
 	}
 	defer func() { err = tx.Done(err) }()
 
+	userID := actor.FromContext(ctx).UID
+	changesetJobs := make([]*btypes.ChangesetJob, 0, len(cs))
 	for _, changeset := range cs {
-		var detach bool
-		for i, assoc := range changeset.BatchChanges {
-			if assoc.BatchChangeID == batchChangeID {
-				changeset.BatchChanges[i].Detach = true
-				detach = true
-			}
-		}
-
-		if !detach {
-			continue
-		}
-
-		changeset.ResetReconcilerState(global.DefaultReconcilerEnqueueState())
-
-		if err := tx.UpdateChangeset(ctx, changeset); err != nil {
-			return err
-		}
+		changesetJobs = append(changesetJobs, &btypes.ChangesetJob{
+			BulkGroup:     bulkGroupID,
+			ChangesetID:   changeset.ID,
+			BatchChangeID: batchChangeID,
+			UserID:        userID,
+			State:         btypes.ChangesetJobStateQueued,
+			JobType:       jobType,
+			Payload:       payload,
+		})
 	}
 
-	return nil
+	// Bulk-insert all changeset jobs into the database.
+	if err := tx.CreateChangesetJob(ctx, changesetJobs...); err != nil {
+		return bulkGroupID, errors.Wrap(err, "creating changeset jobs")
+	}
+
+	return bulkGroupID, nil
 }

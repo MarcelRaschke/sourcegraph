@@ -21,7 +21,7 @@ func (r *siteResolver) ExternalAccounts(ctx context.Context, args *struct {
 	ClientID    *string
 }) (*externalAccountConnectionResolver, error) {
 	// 🚨 SECURITY: Only site admins can list all external accounts.
-	if err := backend.CheckCurrentUserIsSiteAdmin(ctx); err != nil {
+	if err := backend.CheckCurrentUserIsSiteAdmin(ctx, r.db); err != nil {
 		return nil, err
 	}
 
@@ -50,7 +50,7 @@ func (r *UserResolver) ExternalAccounts(ctx context.Context, args *struct {
 	graphqlutil.ConnectionArgs
 }) (*externalAccountConnectionResolver, error) {
 	// 🚨 SECURITY: Only site admins and the user can list a user's external accounts.
-	if err := backend.CheckSiteAdminOrSameUser(ctx, r.user.ID); err != nil {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, r.db, r.user.ID); err != nil {
 		return nil, err
 	}
 
@@ -84,7 +84,7 @@ func (r *externalAccountConnectionResolver) compute(ctx context.Context) ([]*ext
 			opt2.Limit++ // so we can detect if there is a next page
 		}
 
-		r.externalAccounts, r.err = database.GlobalExternalAccounts.List(ctx, opt2)
+		r.externalAccounts, r.err = database.ExternalAccounts(r.db).List(ctx, opt2)
 	})
 	return r.externalAccounts, r.err
 }
@@ -103,7 +103,7 @@ func (r *externalAccountConnectionResolver) Nodes(ctx context.Context) ([]*exter
 }
 
 func (r *externalAccountConnectionResolver) TotalCount(ctx context.Context) (int32, error) {
-	count, err := database.GlobalExternalAccounts.Count(ctx, r.opt)
+	count, err := database.ExternalAccounts(r.db).Count(ctx, r.opt)
 	return int32(count), err
 }
 
@@ -122,17 +122,17 @@ func (r *schemaResolver) DeleteExternalAccount(ctx context.Context, args *struct
 	if err != nil {
 		return nil, err
 	}
-	account, err := database.GlobalExternalAccounts.Get(ctx, id)
+	account, err := database.ExternalAccounts(r.db).Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
 	// 🚨 SECURITY: Only the user and site admins should be able to see a user's external accounts.
-	if err := backend.CheckSiteAdminOrSameUser(ctx, account.UserID); err != nil {
+	if err := backend.CheckSiteAdminOrSameUser(ctx, r.db, account.UserID); err != nil {
 		return nil, err
 	}
 
-	if err := database.GlobalExternalAccounts.Delete(ctx, account.ID); err != nil {
+	if err := database.ExternalAccounts(r.db).Delete(ctx, account.ID); err != nil {
 		return nil, err
 	}
 

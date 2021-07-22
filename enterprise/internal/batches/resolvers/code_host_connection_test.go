@@ -16,7 +16,7 @@ import (
 	btypes "github.com/sourcegraph/sourcegraph/enterprise/internal/batches/types"
 	"github.com/sourcegraph/sourcegraph/internal/actor"
 	"github.com/sourcegraph/sourcegraph/internal/database"
-	"github.com/sourcegraph/sourcegraph/internal/database/dbtesting"
+	"github.com/sourcegraph/sourcegraph/internal/database/dbtest"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc"
 	"github.com/sourcegraph/sourcegraph/internal/extsvc/auth"
 )
@@ -27,14 +27,14 @@ func TestCodeHostConnectionResolver(t *testing.T) {
 	}
 
 	ctx := backend.WithAuthzBypass(context.Background())
-	db := dbtesting.GetDB(t)
+	db := dbtest.NewDB(t, "")
 
-	pruneUserCredentials(t, db)
+	pruneUserCredentials(t, db, nil)
 
 	userID := ct.CreateTestUser(t, db, true).ID
 	userAPIID := string(graphqlbackend.MarshalUserID(userID))
 
-	cstore := store.New(db)
+	cstore := store.New(db, nil)
 
 	ghRepos, _ := ct.CreateTestRepos(t, ctx, db, 1)
 	ghRepo := ghRepos[0]
@@ -52,9 +52,9 @@ func TestCodeHostConnectionResolver(t *testing.T) {
 		cred := &btypes.SiteCredential{
 			ExternalServiceID:   ghRepo.ExternalRepo.ServiceID,
 			ExternalServiceType: ghRepo.ExternalRepo.ServiceType,
-			Credential:          &auth.OAuthBearerToken{Token: "SOSECRET"},
 		}
-		if err := cstore.CreateSiteCredential(ctx, cred); err != nil {
+		token := &auth.OAuthBearerToken{Token: "SOSECRET"}
+		if err := cstore.CreateSiteCredential(ctx, cred, token); err != nil {
 			t.Fatal(err)
 		}
 
@@ -154,7 +154,7 @@ func TestCodeHostConnectionResolver(t *testing.T) {
 	})
 
 	t.Run("User.BatchChangesCodeHosts", func(t *testing.T) {
-		cred, err := cstore.UserCredentials().Create(ctx, database.UserCredentialScope{
+		userCred, err := cstore.UserCredentials().Create(ctx, database.UserCredentialScope{
 			Domain:              database.UserCredentialDomainBatches,
 			ExternalServiceID:   ghRepo.ExternalRepo.ServiceID,
 			ExternalServiceType: ghRepo.ExternalRepo.ServiceType,
@@ -166,9 +166,9 @@ func TestCodeHostConnectionResolver(t *testing.T) {
 		siteCred := &btypes.SiteCredential{
 			ExternalServiceID:   bbsRepo.ExternalRepo.ServiceID,
 			ExternalServiceType: bbsRepo.ExternalRepo.ServiceType,
-			Credential:          &auth.OAuthBearerToken{Token: "SOSECRET"},
 		}
-		if err := cstore.CreateSiteCredential(ctx, siteCred); err != nil {
+		token := &auth.OAuthBearerToken{Token: "SOSECRET"}
+		if err := cstore.CreateSiteCredential(ctx, siteCred, token); err != nil {
 			t.Fatal(err)
 		}
 
@@ -188,10 +188,10 @@ func TestCodeHostConnectionResolver(t *testing.T) {
 				ExternalServiceURL:  ghRepo.ExternalRepo.ServiceID,
 				ExternalServiceKind: extsvc.TypeToKind(ghRepo.ExternalRepo.ServiceType),
 				Credential: apitest.BatchChangesCredential{
-					ID:                  string(marshalBatchChangesCredentialID(cred.ID, false)),
-					ExternalServiceKind: extsvc.TypeToKind(cred.ExternalServiceType),
-					ExternalServiceURL:  cred.ExternalServiceID,
-					CreatedAt:           cred.CreatedAt.Format(time.RFC3339),
+					ID:                  string(marshalBatchChangesCredentialID(userCred.ID, false)),
+					ExternalServiceKind: extsvc.TypeToKind(userCred.ExternalServiceType),
+					ExternalServiceURL:  userCred.ExternalServiceID,
+					CreatedAt:           userCred.CreatedAt.Format(time.RFC3339),
 					IsSiteCredential:    false,
 				},
 			},

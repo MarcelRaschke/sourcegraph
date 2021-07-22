@@ -2,12 +2,12 @@ package worker
 
 import (
 	"context"
-	"errors"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/inconshreveable/log15"
 
 	"github.com/sourcegraph/sourcegraph/enterprise/cmd/executor/internal/apiclient"
@@ -48,6 +48,9 @@ type Options struct {
 	// ResourceOptions configures the resource limits of docker container and Firecracker
 	// virtual machines running on the executor.
 	ResourceOptions command.ResourceOptions
+
+	// MaximumRuntimePerJob is the maximum wall time that can be spent on a single job.
+	MaximumRuntimePerJob time.Duration
 }
 
 // NewWorker creates a worker that polls a remote job queue API for work. The returned
@@ -66,6 +69,7 @@ func NewWorker(options Options, observationContext *observation.Context) gorouti
 
 	handler := &handler{
 		idSet:         idSet,
+		store:         store,
 		options:       options,
 		operations:    command.NewOperations(observationContext),
 		runnerFactory: command.NewRunner,
@@ -73,7 +77,16 @@ func NewWorker(options Options, observationContext *observation.Context) gorouti
 
 	indexer := workerutil.NewWorker(context.Background(), store, handler, options.WorkerOptions)
 	heartbeat := goroutine.NewHandlerWithErrorMessage("heartbeat", func(ctx context.Context) error {
-		return queueStore.Heartbeat(ctx, idSet.Slice())
+		unknownIDs, err := queueStore.Heartbeat(ctx, idSet.Slice())
+		if err != nil {
+			return err
+		}
+
+		for _, id := range unknownIDs {
+			idSet.Remove(id)
+		}
+
+		return nil
 	})
 
 	return goroutine.CombinedRoutine{
@@ -104,15 +117,12 @@ func connectToFrontend(queueStore *apiclient.Client, options Options) bool {
 			return true
 		}
 
-		quiet := false
-		for ex := err; ex != nil; ex = errors.Unwrap(ex) {
-			var e *os.SyscallError
-			if errors.As(ex, &e) && e.Syscall == "connect" && time.Since(start) < time.Minute {
-				quiet = true
-			}
-		}
-
-		if !quiet {
+		var e *os.SyscallError
+		if errors.As(err, &e) && e.Syscall == "connect" && time.Since(start) < time.Minute {
+			// Hide initial connection logs due to services starting up in an nondeterminstic order.
+			// Logs occurring one minute after startup or later are not filtered, nor are non-expected
+			// connection errors during app startup.
+		} else {
 			log15.Error("Failed to connect to Sourcegraph instance", "error", err)
 		}
 

@@ -2,23 +2,23 @@ package worker
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/backend"
 	"github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/stores/dbstore"
 	uploadstoremocks "github.com/sourcegraph/sourcegraph/enterprise/internal/codeintel/stores/uploadstore/mocks"
-	"github.com/sourcegraph/sourcegraph/enterprise/lib/codeintel/bloomfilter"
-	"github.com/sourcegraph/sourcegraph/enterprise/lib/codeintel/semantic"
 	"github.com/sourcegraph/sourcegraph/internal/api"
 	"github.com/sourcegraph/sourcegraph/internal/types"
 	"github.com/sourcegraph/sourcegraph/internal/vcs"
+	"github.com/sourcegraph/sourcegraph/lib/codeintel/bloomfilter"
+	"github.com/sourcegraph/sourcegraph/lib/codeintel/semantic"
 )
 
 func TestHandle(t *testing.T) {
@@ -58,12 +58,14 @@ func TestHandle(t *testing.T) {
 	gitserverClient.CommitDateFunc.SetDefaultReturn(expectedCommitDate, nil)
 
 	handler := &handler{
+		dbStore:         mockDBStore,
+		workerStore:     mockWorkerStore,
 		lsifStore:       mockLSIFStore,
 		uploadStore:     mockUploadStore,
 		gitserverClient: gitserverClient,
 	}
 
-	requeued, err := handler.handle(context.Background(), mockWorkerStore, mockDBStore, upload)
+	requeued, err := handler.handle(context.Background(), upload)
 	if err != nil {
 		t.Fatalf("unexpected error handling upload: %s", err)
 	} else if requeued {
@@ -101,10 +103,12 @@ func TestHandle(t *testing.T) {
 	expectedPackageReferencesDumpID := 42
 	expectedPackageReferences := []semantic.PackageReference{
 		{
-			Scheme:  "scheme A",
-			Name:    "pkg A",
-			Version: "v0.1.0",
-			Filter:  filter,
+			Package: semantic.Package{
+				Scheme:  "scheme A",
+				Name:    "pkg A",
+				Version: "v0.1.0",
+			},
+			Filter: filter,
 		},
 	}
 	if len(mockDBStore.UpdatePackageReferencesFunc.History()) != 1 {
@@ -113,6 +117,12 @@ func TestHandle(t *testing.T) {
 		t.Errorf("unexpected UpdatePackageReferencesFunc args (-want +got):\n%s", diff)
 	} else if diff := cmp.Diff(expectedPackageReferences, mockDBStore.UpdatePackageReferencesFunc.History()[0].Arg2); diff != "" {
 		t.Errorf("unexpected UpdatePackageReferencesFunc args (-want +got):\n%s", diff)
+	}
+
+	if len(mockDBStore.InsertDependencyIndexingJobFunc.History()) != 1 {
+		t.Errorf("unexpected number of InsertDependencyIndexingJob calls. want=%d have=%d", 1, len(mockDBStore.InsertDependencyIndexingJobFunc.History()))
+	} else if mockDBStore.InsertDependencyIndexingJobFunc.History()[0].Arg1 != 42 {
+		t.Errorf("unexpected value for upload id. want=%d have=%d", 42, mockDBStore.InsertDependencyIndexingJobFunc.History()[0].Arg1)
 	}
 
 	if len(mockDBStore.DeleteOverlappingDumpsFunc.History()) != 1 {
@@ -167,15 +177,17 @@ func TestHandleError(t *testing.T) {
 	mockUploadStore.GetFunc.SetDefaultHook(copyTestDump)
 
 	// Set a different tip commit
-	mockDBStore.MarkRepositoryAsDirtyFunc.SetDefaultReturn(fmt.Errorf("uh-oh!"))
+	mockDBStore.MarkRepositoryAsDirtyFunc.SetDefaultReturn(errors.Errorf("uh-oh!"))
 
 	handler := &handler{
+		dbStore:         mockDBStore,
+		workerStore:     mockWorkerStore,
 		lsifStore:       mockLSIFStore,
 		uploadStore:     mockUploadStore,
 		gitserverClient: gitserverClient,
 	}
 
-	requeued, err := handler.handle(context.Background(), mockWorkerStore, mockDBStore, upload)
+	requeued, err := handler.handle(context.Background(), upload)
 	if err == nil {
 		t.Fatalf("unexpected nil error handling upload")
 	} else if !strings.Contains(err.Error(), "uh-oh!") {
@@ -224,11 +236,13 @@ func TestHandleCloneInProgress(t *testing.T) {
 	gitserverClient := NewMockGitserverClient()
 
 	handler := &handler{
+		dbStore:         mockDBStore,
+		workerStore:     mockWorkerStore,
 		uploadStore:     mockUploadStore,
 		gitserverClient: gitserverClient,
 	}
 
-	requeued, err := handler.handle(context.Background(), mockWorkerStore, mockDBStore, upload)
+	requeued, err := handler.handle(context.Background(), upload)
 	if err != nil {
 		t.Fatalf("unexpected error handling upload: %s", err)
 	} else if !requeued {

@@ -30,7 +30,7 @@ type SyncWorkerOptions struct {
 }
 
 // NewSyncWorker creates a new external service sync worker.
-func NewSyncWorker(ctx context.Context, db dbutil.DB, handler dbworker.Handler, opts SyncWorkerOptions) (*workerutil.Worker, *dbworker.Resetter) {
+func NewSyncWorker(ctx context.Context, db dbutil.DB, handler workerutil.Handler, opts SyncWorkerOptions) (*workerutil.Worker, *dbworker.Resetter) {
 	if opts.NumHandlers == 0 {
 		opts.NumHandlers = 3
 	}
@@ -47,10 +47,19 @@ func NewSyncWorker(ctx context.Context, db dbutil.DB, handler dbworker.Handler, 
 		Isolation: sql.LevelReadCommitted,
 	})
 
-	syncJobColumns := append(store.DefaultColumnExpressions(), []*sqlf.Query{
+	syncJobColumns := []*sqlf.Query{
+		sqlf.Sprintf("id"),
+		sqlf.Sprintf("state"),
+		sqlf.Sprintf("failure_message"),
+		sqlf.Sprintf("started_at"),
+		sqlf.Sprintf("finished_at"),
+		sqlf.Sprintf("process_after"),
+		sqlf.Sprintf("num_resets"),
+		sqlf.Sprintf("num_failures"),
+		sqlf.Sprintf("execution_logs"),
 		sqlf.Sprintf("external_service_id"),
 		sqlf.Sprintf("next_sync_at"),
-	}...)
+	}
 
 	store := store.New(dbHandle, store.Options{
 		Name:              "repo_sync_worker_store",
@@ -65,10 +74,11 @@ func NewSyncWorker(ctx context.Context, db dbutil.DB, handler dbworker.Handler, 
 	})
 
 	worker := dbworker.NewWorker(ctx, store, handler, workerutil.WorkerOptions{
-		Name:        "repo_sync_worker",
-		NumHandlers: opts.NumHandlers,
-		Interval:    opts.WorkerInterval,
-		Metrics:     newWorkerMetrics(opts.PrometheusRegisterer),
+		Name:              "repo_sync_worker",
+		NumHandlers:       opts.NumHandlers,
+		Interval:          opts.WorkerInterval,
+		HeartbeatInterval: 15 * time.Second,
+		Metrics:           newWorkerMetrics(opts.PrometheusRegisterer),
 	})
 
 	resetter := dbworker.NewResetter(store, dbworker.ResetterOptions{

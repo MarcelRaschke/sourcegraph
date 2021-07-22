@@ -2,10 +2,11 @@ package graphqlbackend
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"sync"
 
+	"github.com/cockroachdb/errors"
+
+	"github.com/sourcegraph/sourcegraph/cmd/frontend/backend"
 	"github.com/sourcegraph/sourcegraph/cmd/frontend/graphqlbackend/graphqlutil"
 	"github.com/sourcegraph/sourcegraph/internal/database"
 	"github.com/sourcegraph/sourcegraph/internal/database/dbutil"
@@ -52,9 +53,6 @@ type userConnectionResolver struct {
 
 // compute caches results from the more expensive user list creation that occurs when activePeriod
 // is set to a specific length of time.
-//
-// Because usage statistics data isn't stored in PostgreSQL (but rather in Redis), adding this
-// parameter requires accessing a second data store.
 func (r *userConnectionResolver) compute(ctx context.Context) ([]*types.User, int, error) {
 	if r.activePeriod == nil {
 		return nil, 0, errors.New("activePeriod must not be nil")
@@ -69,30 +67,35 @@ func (r *userConnectionResolver) compute(ctx context.Context) ([]*types.User, in
 		case "THIS_MONTH":
 			r.opt.UserIDs, err = usagestats.ListRegisteredUsersThisMonth(ctx, r.db)
 		default:
-			err = fmt.Errorf("unknown user active period %s", *r.activePeriod)
+			err = errors.Errorf("unknown user active period %s", *r.activePeriod)
 		}
 		if err != nil {
 			r.err = err
 			return
 		}
 
-		r.users, err = database.GlobalUsers.List(ctx, &r.opt)
+		r.users, err = database.Users(r.db).List(ctx, &r.opt)
 		if err != nil {
 			r.err = err
 			return
 		}
-		r.totalCount, r.err = database.GlobalUsers.Count(ctx, &r.opt)
+		r.totalCount, r.err = database.Users(r.db).Count(ctx, &r.opt)
 	})
 	return r.users, r.totalCount, r.err
 }
 
 func (r *userConnectionResolver) Nodes(ctx context.Context) ([]*UserResolver, error) {
+	// 🚨 SECURITY: Only site admins can list users.
+	if err := backend.CheckCurrentUserIsSiteAdmin(ctx, r.db); err != nil {
+		return nil, err
+	}
+
 	var users []*types.User
 	var err error
 	if r.useCache() {
 		users, _, err = r.compute(ctx)
 	} else {
-		users, err = database.GlobalUsers.List(ctx, &r.opt)
+		users, err = database.Users(r.db).List(ctx, &r.opt)
 	}
 	if err != nil {
 		return nil, err
@@ -109,12 +112,17 @@ func (r *userConnectionResolver) Nodes(ctx context.Context) ([]*UserResolver, er
 }
 
 func (r *userConnectionResolver) TotalCount(ctx context.Context) (int32, error) {
+	// 🚨 SECURITY: Only site admins can count users.
+	if err := backend.CheckCurrentUserIsSiteAdmin(ctx, r.db); err != nil {
+		return 0, err
+	}
+
 	var count int
 	var err error
 	if r.useCache() {
 		_, count, err = r.compute(ctx)
 	} else {
-		count, err = database.GlobalUsers.Count(ctx, &r.opt)
+		count, err = database.Users(r.db).Count(ctx, &r.opt)
 	}
 	return int32(count), err
 }

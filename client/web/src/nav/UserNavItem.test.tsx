@@ -10,6 +10,7 @@ import { UserNavItem, UserNavItemProps } from './UserNavItem'
 describe('UserNavItem', () => {
     const USER: UserNavItemProps['authenticatedUser'] = {
         username: 'alice',
+        displayName: 'alice doe',
         avatarURL: null,
         session: { canSignOut: true },
         settingsURL: '#',
@@ -41,6 +42,7 @@ describe('UserNavItem', () => {
             mount(
                 <MemoryRouter>
                     <UserNavItem
+                        showRepositorySection={true}
                         isLightTheme={true}
                         onThemePreferenceChange={() => undefined}
                         themePreference={ThemePreference.Light}
@@ -49,6 +51,8 @@ describe('UserNavItem', () => {
                         showDotComMarketing={true}
                         isExtensionAlertAnimating={false}
                         codeHostIntegrationMessaging="browser-extension"
+                        showSearchContext={true}
+                        showSearchContextManagement={true}
                     />
                 </MemoryRouter>
             )

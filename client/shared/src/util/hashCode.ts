@@ -1,21 +1,15 @@
 /**
  * Returns a hash code value for a string.
  *
- * The hash algorithm here is similar to the one used in Java's String.hashCode
- * and in lsifstore.
+ * The hash algorithm here is using Base64 encoding of a SHA256 hash
+ *
  */
-export function hashCode(string: string, maxIndex: number): number {
-    let hash = 0
+export async function hashCode(input: string): Promise<string> {
+    // See `SubtleCrypto` API docs:
+    // https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/digest#converting_a_digest_to_a_hex_string
+    const messageUint8 = new TextEncoder().encode(input)
+    const hashBuffer = await crypto.subtle.digest('SHA-256', messageUint8)
+    const hashArray = [...new Uint8Array(hashBuffer)]
 
-    for (let index = 0; index < string.length; index++) {
-        const char = string.charCodeAt(index)
-        hash = (hash << 5) - hash + char
-        hash |= 0 // Convert to 32bit integer
-    }
-
-    if (hash < 0) {
-        hash = -hash
-    }
-
-    return hash % maxIndex
+    return btoa(String.fromCharCode(...hashArray))
 }
