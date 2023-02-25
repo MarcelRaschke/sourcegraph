@@ -32,7 +32,7 @@ require (
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
 	github.com/xeipuuv/gojsonschema v1.2.0
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/sys v0.0.0-20220209214540-3681064d5158
+	golang.org/x/sys v0.1.0
 	golang.org/x/tools v0.1.9 // indirect
 	google.golang.org/protobuf v1.27.1
 	gopkg.in/yaml.v2 v2.4.0
