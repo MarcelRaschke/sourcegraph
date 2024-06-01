@@ -1,4 +1,4 @@
-FROM weaveworks/ignite-ubuntu:20.04-amd64@sha256:4f5f5ed56fae650ae122daa28a785192dda081be4f0b37dca2eb25ea57840500
+FROM weaveworks/ignite-ubuntu:20.04-amd64@sha256:5f8bbb08ab81d5ab53aa0a152b447e4d8c9a227d24bf535ec0bbc09667441b5d
 
 # hadolint ignore=DL3008,DL3009
 RUN set -ex && \
