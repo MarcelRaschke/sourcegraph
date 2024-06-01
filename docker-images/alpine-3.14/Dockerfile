@@ -2,7 +2,7 @@
 # base image used by all Sourcegraph Docker images.
 
 # alpine_base CHECK:ALPINE_OK
-FROM alpine:3.14@sha256:635f0aa53d99017b38d1a0aa5b2082f7812b03e3cdb299103fe77b5c8a07f1d2 AS alpine_base
+FROM alpine:3.14@sha256:0f2d5c38dd7a4f4f733e688e3a6733cb5ab1ac6e3cb4603a5dd564e5bfb80eed AS alpine_base
 
 LABEL org.opencontainers.image.url=https://sourcegraph.com/
 LABEL org.opencontainers.image.source=https://github.com/sourcegraph/sourcegraph/
