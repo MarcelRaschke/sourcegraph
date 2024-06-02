@@ -28,7 +28,7 @@ sg-lsif = { path = "../sg-lsif" }
 insta = "1.11.0"
 
 [build-dependencies]
-cc = { version = "1" }
+cc = { version = "1.0.98" }
 anyhow = "1"
 
 [features]
