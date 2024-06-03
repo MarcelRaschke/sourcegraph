@@ -4729,10 +4729,10 @@
   resolved "https://registry.npmjs.org/@types/d3-color/-/d3-color-1.4.1.tgz#0d9746c84dfef28807b2989eed4f37b2575e1f33"
   integrity sha512-xkPLi+gbgUU9ED6QX4g6jqYL2KCB0/3AlM+ncMGqn49OgH0gFMY/ITGqPF8HwEiLzJaC+2L0I+gNwBgABv1Pvg==
 
-"@types/d3-format@2.0.0":
-  version "2.0.0"
-  resolved "https://registry.npmjs.org/@types/d3-format/-/d3-format-2.0.0.tgz#607d261cb268f0a027f100575491031539a40ee6"
-  integrity sha512-uagdkftxnGkO4pZw5jEYOM5ZnZOEsh7z8j11Qxk85UkB2RzfUUxRl7R9VvvJZHwKn8l+x+rpS77Nusq7FkFmIg==
+"@types/d3-format@2.0.5":
+  version "2.0.5"
+  resolved "https://registry.npmjs.org/@types/d3-format/-/d3-format-2.0.5.tgz#68a0a9ad8560e26f0bd1a7eedb2324590b470db9"
+  integrity sha512-ntJZQfz4BK8m53vkUVk+3PE7PHr9esrfVkClxebcMNP/4N1F0rPdzv9hKNqx2gZBRHSYg1kQumeUDIrHDpQGwQ==
 
 "@types/d3-interpolate@^1.3.1":
   version "1.4.2"
