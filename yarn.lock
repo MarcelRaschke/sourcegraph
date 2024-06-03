@@ -4578,10 +4578,10 @@
   dependencies:
     "@babel/types" "^7.3.0"
 
-"@types/bloomfilter@0.0.0":
-  version "0.0.0"
-  resolved "https://registry.npmjs.org/@types/bloomfilter/-/bloomfilter-0.0.0.tgz#fbfdf4fbf1d9f4775ee0ef952e58b138e5dae423"
-  integrity sha512-bZhGgidbIsN1sgI3tLwyxTpSa9Dkd9V5MrDU/O92OiqqEN+CNOxbyzPYAFOoBFw4VAh2EdzqT4XucKZEkrI0JQ==
+"@types/bloomfilter@0.0.2":
+  version "0.0.2"
+  resolved "https://registry.npmjs.org/@types/bloomfilter/-/bloomfilter-0.0.2.tgz#194cf5aa4dbe3800ca26c649709328f479199633"
+  integrity sha512-XWY6sYrOqHMPVf2pwITSQ5ZQWjk2QSQibHcXPJtjuYGHkweOkcU8BbgWSYynWVFMjeS/OVhYCyR+V0puTNC/hQ==
 
 "@types/body-parser@*":
   version "1.17.0"
