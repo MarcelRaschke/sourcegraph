@@ -4717,12 +4717,12 @@
   dependencies:
     postcss "5 - 7"
 
-"@types/d3-axis@1.0.12":
-  version "1.0.12"
-  resolved "https://registry.npmjs.org/@types/d3-axis/-/d3-axis-1.0.12.tgz#8c124edfcc02f3b3a9cdaa2a28b8a20341401799"
-  integrity sha512-BZISgSD5M8TgURyNtcPAmUB9sk490CO1Thb6/gIn0WZTt3Y50IssX+2Z0vTccoqZksUDTep0b+o4ofXslvNbqg==
+"@types/d3-axis@1.0.19":
+  version "1.0.19"
+  resolved "https://registry.npmjs.org/@types/d3-axis/-/d3-axis-1.0.19.tgz#13210428e510b7646ae89d9b2d6ad9ee801973f4"
+  integrity sha512-rXxE2jJYv6kar/6YWS8rM0weY+jjvnJvBxHKrIUqt3Yzomrfbf5tncpKG6jq6Aaw6TZyBcb1bxEWc0zGzcmbiw==
   dependencies:
-    "@types/d3-selection" "*"
+    "@types/d3-selection" "^1"
 
 "@types/d3-color@^1":
   version "1.4.1"
@@ -4765,7 +4765,7 @@
   dependencies:
     "@types/d3-time" "^2"
 
-"@types/d3-selection@*", "@types/d3-selection@1.4.1":
+"@types/d3-selection@1.4.1", "@types/d3-selection@^1":
   version "1.4.1"
   resolved "https://registry.npmjs.org/@types/d3-selection/-/d3-selection-1.4.1.tgz#fa1f8710a6b5d7cfe5c6caa61d161be7cae4a022"
   integrity sha512-bv8IfFYo/xG6dxri9OwDnK3yCagYPeRIjTlrcdYJSx+FDWlCeBDepIHUpqROmhPtZ53jyna0aUajZRk0I3rXNA==
