@@ -4640,10 +4640,10 @@
     "@types/filesystem" "*"
     "@types/har-format" "*"
 
-"@types/chrome@0.0.127":
-  version "0.0.127"
-  resolved "https://registry.npmjs.org/@types/chrome/-/chrome-0.0.127.tgz#9e29f351d558f60e95326ceadc586fdcc824151b"
-  integrity sha512-hBB9EApLYKKn2GvklVkTxVP6vZvxsH9okyIRUinNtMzZHIgIKWQk/ESbX+O5g4Bihfy38+aFGn7Kl7Cxou5JUg==
+"@types/chrome@0.0.268":
+  version "0.0.268"
+  resolved "https://registry.npmjs.org/@types/chrome/-/chrome-0.0.268.tgz#d5855546f30c83e181cadd77127a162c25b480d2"
+  integrity sha512-7N1QH9buudSJ7sI8Pe4mBHJr5oZ48s0hcanI9w3wgijAlv1OZNUZve9JR4x42dn5lJ5Sm87V1JNfnoh10EnQlA==
   dependencies:
     "@types/filesystem" "*"
     "@types/har-format" "*"
