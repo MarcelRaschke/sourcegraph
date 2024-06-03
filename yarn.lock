@@ -4613,10 +4613,10 @@
     "@types/node" "*"
     "@types/responselike" "*"
 
-"@types/case-sensitive-paths-webpack-plugin@2.1.5":
-  version "2.1.5"
-  resolved "https://registry.npmjs.org/@types/case-sensitive-paths-webpack-plugin/-/case-sensitive-paths-webpack-plugin-2.1.5.tgz#ac7b9b09f1e857e3df23628f41ce43e2742199b1"
-  integrity sha512-uCgGmNq/dKKMsQJTYLGl25z9xx/oHuXt9aE7hyu3UXBzJPdgMO6fEcZ3Tct/QFSy2FFTqJ1A2ha5DIn+sfUikA==
+"@types/case-sensitive-paths-webpack-plugin@2.1.9":
+  version "2.1.9"
+  resolved "https://registry.npmjs.org/@types/case-sensitive-paths-webpack-plugin/-/case-sensitive-paths-webpack-plugin-2.1.9.tgz#fdde9c2e9ef3fe3fa42721199711fc1c7dff7192"
+  integrity sha512-PgzPEjX7lmqJh4m717reml5Lkabnxxu4k7EQc78h0zmgoZINbFtM3lPyR6HKr8j+bbWbhZ29ZezH2ICLSHPVzw==
   dependencies:
     "@types/webpack" "^4"
 
